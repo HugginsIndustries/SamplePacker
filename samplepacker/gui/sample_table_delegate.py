@@ -11,11 +11,9 @@ Numeric editors use default delegate editors.
 
 from __future__ import annotations
 
-from typing import Tuple
-
-from PySide6.QtCore import QModelIndex, QRect, Qt, Signal, QPoint
+from PySide6.QtCore import QModelIndex, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QStyledItemDelegate, QWidget
+from PySide6.QtWidgets import QStyledItemDelegate
 
 
 class SampleTableDelegate(QStyledItemDelegate):
@@ -86,7 +84,7 @@ class SampleTableDelegate(QStyledItemDelegate):
     def _paint_single_button(self, painter: QPainter, rect: QRect, text: str) -> None:
         self._draw_button(painter, rect.adjusted(6, 4, -6, -4), text)
 
-    def _dual_button_rects(self, rect: QRect) -> Tuple[QRect, QRect]:
+    def _dual_button_rects(self, rect: QRect) -> tuple[QRect, QRect]:
         inner = rect.adjusted(4, 4, -4, -4)
         mid_x = inner.x() + inner.width() // 2
         left = QRect(inner.x(), inner.y(), mid_x - inner.x() - 2, inner.height())

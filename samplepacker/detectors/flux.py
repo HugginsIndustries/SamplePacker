@@ -2,8 +2,9 @@
 
 
 import numpy as np
+
 from samplepacker.detectors.base import BaseDetector, Segment
-from samplepacker.dsp import percentile_threshold, apply_hysteresis, spectral_flux
+from samplepacker.dsp import apply_hysteresis, percentile_threshold, spectral_flux
 
 
 class TransientFluxDetector(BaseDetector):

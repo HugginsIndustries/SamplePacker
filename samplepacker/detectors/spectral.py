@@ -2,6 +2,7 @@
 
 
 import numpy as np
+
 from samplepacker.detectors.base import BaseDetector, Segment
 from samplepacker.dsp import (
     percentile_threshold,

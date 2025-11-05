@@ -3,8 +3,8 @@
 import logging
 from pathlib import Path
 
-from samplepacker.detectors.base import Segment
 from samplepacker.audio_io import extract_sample, get_audio_info
+from samplepacker.detectors.base import Segment
 from samplepacker.utils import ensure_dir, sanitize_filename
 
 

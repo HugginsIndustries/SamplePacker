@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import numpy as np
 import soundfile as sf
-from pathlib import Path
 
 from samplepacker.audio_io import extract_sample
 

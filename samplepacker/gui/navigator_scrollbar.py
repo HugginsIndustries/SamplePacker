@@ -1,7 +1,7 @@
 """Navigator scrollbar widget (Bitwig-style) showing spectrogram overview."""
 
 import numpy as np
-from PySide6.QtCore import QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -328,16 +328,16 @@ class NavigatorScrollbar(QWidget):
         dx = 0
         try:
             ad = event.angleDelta()
-            dy = int(getattr(ad, "y")()) if hasattr(ad, "y") else int(ad.y())
-            dx = int(getattr(ad, "x")()) if hasattr(ad, "x") else int(ad.x())
+            dy = int(ad.y()) if hasattr(ad, "y") else int(ad.y())
+            dx = int(ad.x()) if hasattr(ad, "x") else int(ad.x())
         except Exception:
             dy = dy or 0
             dx = dx or 0
         if dy == 0 and dx == 0:
             try:
                 pd = event.pixelDelta()
-                dy = int(getattr(pd, "y")()) if hasattr(pd, "y") else int(pd.y())
-                dx = int(getattr(pd, "x")()) if hasattr(pd, "x") else int(pd.x())
+                dy = int(pd.y()) if hasattr(pd, "y") else int(pd.y())
+                dx = int(pd.x()) if hasattr(pd, "x") else int(pd.x())
             except Exception:
                 pass
         if dy == 0 and dx == 0:

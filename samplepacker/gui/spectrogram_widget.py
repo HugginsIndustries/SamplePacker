@@ -1,16 +1,15 @@
 """DAW-style spectrogram widget with zoom, pan, and sample markers."""
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
-from pathlib import Path
-
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMenu, QWidget
 
 from samplepacker.detectors.base import Segment
@@ -103,7 +102,7 @@ class SpectrogramWidget(QWidget):
         self._last_click_time = 0.0
         self._last_click_time_pos: QPoint | None = None
         self._last_clicked_index: int | None = None
-        
+
         # Pending changes for deferred updates
         self._pending_drag_start: float | None = None
         self._pending_drag_end: float | None = None
@@ -113,7 +112,7 @@ class SpectrogramWidget(QWidget):
         self._pending_create_end: float | None = None
         self._original_segment_start: float | None = None  # For ESC cancellation
         self._original_segment_end: float | None = None  # For ESC cancellation
-        
+
         # Drag start timer for double-click prevention
         self._drag_start_timer: QTimer | None = None
         self._min_hold_duration_ms = 150  # Minimum hold duration before drag starts
@@ -147,10 +146,10 @@ class SpectrogramWidget(QWidget):
         self._canvas.mpl_connect("button_release_event", self._on_mouse_release)
         self._canvas.mpl_connect("motion_notify_event", self._on_mouse_move)
         self._canvas.mpl_connect("scroll_event", self._on_wheel)
-        
+
         # Set cursor tracking
         self._canvas.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        
+
         # Install event filter on canvas for double-click detection
         self._canvas.installEventFilter(self)
 
@@ -658,19 +657,19 @@ class SpectrogramWidget(QWidget):
                 # Update selection immediately
                 self._selected_index = clicked_index
                 self.sample_selected.emit(clicked_index)
-                
+
                 # Check if clicking on resize handle
                 seg = self._segments[clicked_index]
                 # Store original segment values for ESC cancellation
                 self._original_segment_start = seg.start
                 self._original_segment_end = seg.end
                 handle_width = self._get_handle_width()
-                
+
                 # Cancel any pending drag timer
                 if self._drag_start_timer is not None:
                     self._drag_start_timer.stop()
                     self._drag_start_timer = None
-                
+
                 # Determine operation type and start timer
                 if abs(time - seg.start) < handle_width:
                     # Will resize left edge
@@ -717,11 +716,11 @@ class SpectrogramWidget(QWidget):
         """Handle drag start timer expiration - actually start the drag/resize operation."""
         if self._pending_drag_operation is None or self._pending_drag_index is None or self._pending_drag_click_time is None:
             return
-        
+
         clicked_index = self._pending_drag_index
         time = self._pending_drag_click_time
         seg = self._segments[clicked_index]
-        
+
         if self._pending_drag_operation == 'resize_left':
             self.sample_resize_started.emit(clicked_index)
             self._resizing_left = True
@@ -736,7 +735,7 @@ class SpectrogramWidget(QWidget):
             self.sample_drag_started.emit(clicked_index)
             self._dragging = True
             self._drag_start_time = time
-        
+
         # Clear pending state
         self._pending_drag_operation = None
         self._pending_drag_index = None
@@ -753,7 +752,7 @@ class SpectrogramWidget(QWidget):
                 self._pending_drag_operation = None
                 self._pending_drag_index = None
                 self._pending_drag_click_time = None
-            
+
             # Apply pending changes and emit signals
             if self._dragging and self._selected_index is not None and self._pending_drag_start is not None and self._pending_drag_end is not None:
                 # Restore original segment position first
@@ -979,15 +978,15 @@ class SpectrogramWidget(QWidget):
                         dx = 0
                         try:
                             ad = event.angleDelta()
-                            dy = int(getattr(ad, "y")()) if hasattr(ad, "y") else int(ad.y())
-                            dx = int(getattr(ad, "x")()) if hasattr(ad, "x") else int(ad.x())
+                            dy = int(ad.y()) if hasattr(ad, "y") else int(ad.y())
+                            dx = int(ad.x()) if hasattr(ad, "x") else int(ad.x())
                         except Exception:
                             pass
                         if dy == 0 and dx == 0:
                             try:
                                 pd = event.pixelDelta()
-                                dy = int(getattr(pd, "y")()) if hasattr(pd, "y") else int(pd.y())
-                                dx = int(getattr(pd, "x")()) if hasattr(pd, "x") else int(pd.x())
+                                dy = int(pd.y()) if hasattr(pd, "y") else int(pd.y())
+                                dx = int(pd.x()) if hasattr(pd, "x") else int(pd.x())
                             except Exception:
                                 pass
 
@@ -1018,15 +1017,15 @@ class SpectrogramWidget(QWidget):
                     pos = mouse_event.position()
                     x = pos.x()
                     y = pos.y()
-                    
+
                     # Get data coordinates from matplotlib
                     inv = self._ax.transData.inverted()
                     try:
                         coords = inv.transform((x, y))
                         time = coords[0]
-                        
+
                         time = max(self._start_time, min(time, self._end_time))
-                        
+
                         # Check if double-clicking on a segment
                         clicked_index = self._find_segment_at_time(time)
                         if clicked_index is not None:
@@ -1047,7 +1046,7 @@ class SpectrogramWidget(QWidget):
                         self._pending_drag_operation = None
                         self._pending_drag_index = None
                         self._pending_drag_click_time = None
-                    
+
                     # Cancel any ongoing drag/resize/create operation
                     if self._dragging or self._resizing_left or self._resizing_right or self._creating_sample:
                         # Restore original segment positions if dragging/resizing
@@ -1074,9 +1073,9 @@ class SpectrogramWidget(QWidget):
                         # Update display to show original state
                         self._update_display()
                         return True
-        
+
         return super().eventFilter(obj, event)
-    
+
     def _show_context_menu(self, seg_index: int, pos: QPoint) -> None:
         """Show context menu for segment.
         
@@ -1085,12 +1084,12 @@ class SpectrogramWidget(QWidget):
             pos: Global screen position.
         """
         menu = QMenu(self)
-        
+
         play_action = menu.addAction("Play Sample")
         play_action.triggered.connect(lambda: self.sample_play_requested.emit(seg_index))
-        
+
         menu.addSeparator()
-        
+
         # Disable options
         disable_action = menu.addAction("Disable")
         disable_action.triggered.connect(lambda: self.sample_disable_requested.emit(seg_index, True))
@@ -1109,7 +1108,7 @@ class SpectrogramWidget(QWidget):
 
         delete_action = menu.addAction("Delete Sample")
         delete_action.triggered.connect(lambda: self.sample_deleted.emit(seg_index))
-        
+
         menu.exec(pos)
 
     def _find_segment_at_time(self, time: float) -> int | None:

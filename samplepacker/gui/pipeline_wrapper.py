@@ -1,9 +1,9 @@
 """Wrapper for pipeline processing in GUI context."""
 
 import logging
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
-from concurrent.futures import ProcessPoolExecutor, Future
 
 from samplepacker.detectors.base import Segment
 from samplepacker.pipeline import ProcessingSettings, process_file

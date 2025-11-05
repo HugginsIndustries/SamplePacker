@@ -110,7 +110,7 @@ class DetectionSettingsPanel(QWidget):
         existing_workers = getattr(self._settings, "max_workers", None)
         self._workers_spin.setValue(int(existing_workers or default_workers))
         def _on_workers_changed(v: int) -> None:
-            setattr(self._settings, "max_workers", int(v))
+            self._settings.max_workers = int(v)
             self._on_settings_changed()
         self._workers_spin.valueChanged.connect(_on_workers_changed)
         layout.addRow("CPU workers:", self._workers_spin)

@@ -95,7 +95,7 @@ class ThemeManager(QObject):
         elif system == "Darwin":  # macOS
             try:
                 import ctypes
-                from ctypes import Structure, c_uint32, c_void_p
+                from ctypes import Structure, c_void_p
 
                 class NSAppearance(Structure):
                     _fields_ = [("dummy", c_void_p)]

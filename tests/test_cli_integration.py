@@ -173,10 +173,11 @@ def test_timestamps_csv_format(test_output_dir: Path):
         assert "score" in rows[0]
 
 def test_marked_spectrogram_overlay_smoke(tmp_path: Path, test_audio_file: Path):
-    from samplepacker.report import create_annotated_spectrogram
+    import matplotlib.image as mpimg
+
     from samplepacker.audio_io import generate_spectrogram_png
     from samplepacker.detectors.base import Segment
-    import matplotlib.image as mpimg
+    from samplepacker.report import create_annotated_spectrogram
     # make clean png
     clean = tmp_path / "clean.png"
     generate_spectrogram_png(test_audio_file, clean, size="1024x256")

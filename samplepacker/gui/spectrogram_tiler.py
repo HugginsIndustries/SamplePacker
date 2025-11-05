@@ -1,15 +1,15 @@
 """Spectrogram tiling system for efficient rendering of long files."""
 
 import logging
-from pathlib import Path
-from typing import Any, Callable
-from concurrent.futures import ThreadPoolExecutor, Future
 from collections import OrderedDict
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 
 import numpy as np
-from scipy import signal
-from matplotlib.cm import get_cmap
 import soundfile as sf
+from matplotlib.cm import get_cmap
+from scipy import signal
 
 logger = logging.getLogger(__name__)
 
@@ -179,12 +179,12 @@ class SpectrogramTiler:
         if self.fmin is not None or self.fmax is not None:
             fmin_idx = 0
             fmax_idx = len(frequencies)
-            
+
             if len(frequencies) > 0:
                 logger.debug(f"Frequency filtering: original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]")
             else:
                 logger.warning(f"Frequency filtering: original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]")
-            
+
             if self.fmin is not None:
                 # Use searchsorted to find the first index where frequency >= fmin
                 # This correctly handles edge cases where all frequencies are below fmin
@@ -195,7 +195,7 @@ class SpectrogramTiler:
                     fmin_idx = len(frequencies)  # This will result in empty slice, which is correct
                 else:
                     logger.debug(f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz")
-                    
+
             if self.fmax is not None:
                 # Use searchsorted with side='right' to find the first index where frequency > fmax
                 # This correctly handles edge cases where all frequencies are below fmax
@@ -205,7 +205,7 @@ class SpectrogramTiler:
                     logger.warning(f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)")
                 else:
                     logger.debug(f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz")
-            
+
             # Validate indices before slicing
             if fmin_idx >= fmax_idx:
                 logger.warning(f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data.")
@@ -295,12 +295,12 @@ class SpectrogramTiler:
         if self.fmin is not None or self.fmax is not None:
             fmin_idx = 0
             fmax_idx = len(frequencies)
-            
+
             if len(frequencies) > 0:
                 logger.debug(f"Frequency filtering (overview): original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]")
             else:
                 logger.warning(f"Frequency filtering (overview): original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]")
-            
+
             if self.fmin is not None:
                 # Use searchsorted to find the first index where frequency >= fmin
                 # This correctly handles edge cases where all frequencies are below fmin
@@ -311,7 +311,7 @@ class SpectrogramTiler:
                     fmin_idx = len(frequencies)  # This will result in empty slice, which is correct
                 else:
                     logger.debug(f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz")
-                    
+
             if self.fmax is not None:
                 # Use searchsorted with side='right' to find the first index where frequency > fmax
                 # This correctly handles edge cases where all frequencies are below fmax
@@ -321,7 +321,7 @@ class SpectrogramTiler:
                     logger.warning(f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)")
                 else:
                     logger.debug(f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz")
-            
+
             # Validate indices before slicing
             if fmin_idx >= fmax_idx:
                 logger.warning(f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data.")

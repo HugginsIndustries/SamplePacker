@@ -2,8 +2,10 @@
 
 
 from samplepacker.detectors.base import Segment
-from samplepacker.pipeline import deduplicate_segments_after_padding, merge_segments
-from samplepacker.pipeline import ProcessingSettings
+from samplepacker.pipeline import (
+    deduplicate_segments_after_padding,
+    merge_segments,
+)
 
 
 def test_segment_overlap():

@@ -13,9 +13,9 @@ Rows:
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, Signal, QTimer
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
 
 from samplepacker.detectors.base import Segment
 
@@ -33,13 +33,13 @@ class SampleTableModel(QAbstractTableModel):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._segments: List[Segment] = []
+        self._segments: list[Segment] = []
         self._visible_count: int = 0
         self._chunk_timer: QTimer | None = None
         self._chunk_size: int = 300
 
     # Public API
-    def set_segments(self, segments: List[Segment]) -> None:
+    def set_segments(self, segments: list[Segment]) -> None:
         """Set the underlying segments; reveals columns incrementally.
 
         For very large lists, insert columns in chunks to keep UI responsive.
@@ -62,7 +62,7 @@ class SampleTableModel(QAbstractTableModel):
             bottom_right = self.index(4, column)
             self.dataChanged.emit(top_left, bottom_right, [Qt.DisplayRole, Qt.EditRole])
 
-    def segments(self) -> List[Segment]:
+    def segments(self) -> list[Segment]:
         return self._segments
 
     # QAbstractTableModel overrides

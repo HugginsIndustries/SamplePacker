@@ -6,11 +6,29 @@ from typing import Any
 
 from tqdm import tqdm
 
-from samplepacker.audio_io import AudioCache, check_ffmpeg, denoise_audio, get_audio_info, resample_for_analysis, generate_spectrogram_png
-from samplepacker.detectors import Segment, VoiceVADDetector, TransientFluxDetector, NonSilenceEnergyDetector, SpectralInterestingnessDetector
-from samplepacker.export import build_sample_filename, export_markers_audacity, export_markers_reaper, export_sample, export_timestamps_csv
+from samplepacker.audio_io import (
+    AudioCache,
+    check_ffmpeg,
+    denoise_audio,
+    generate_spectrogram_png,
+    get_audio_info,
+    resample_for_analysis,
+)
+from samplepacker.detectors import (
+    NonSilenceEnergyDetector,
+    Segment,
+    SpectralInterestingnessDetector,
+    TransientFluxDetector,
+    VoiceVADDetector,
+)
+from samplepacker.export import (
+    build_sample_filename,
+    export_markers_audacity,
+    export_markers_reaper,
+    export_sample,
+    export_timestamps_csv,
+)
 from samplepacker.report import create_annotated_spectrogram, create_html_report, save_summary_json
-from samplepacker.utils import Timer
 
 
 class ProcessingSettings:
@@ -188,31 +206,31 @@ def spread_samples_across_duration(
     """
     if not segments or max_samples <= 0 or audio_duration <= 0:
         return []
-    
+
     if len(segments) <= max_samples:
         return segments
-    
+
     # Divide audio into equal time windows
     window_size = audio_duration / max_samples
     selected: list[Segment] = []
     used_indices: set[int] = set()
-    
+
     for i in range(max_samples):
         window_center = (i + 0.5) * window_size
-        
+
         # Find the closest unused segment to this window center
         best_idx = None
         best_seg = None
         best_distance = float('inf')
-        
+
         for idx, seg in enumerate(segments):
             if idx in used_indices:
                 continue
-            
+
             # Calculate distance from segment center to window center
             seg_center = (seg.start + seg.end) / 2.0
             distance = abs(seg_center - window_center)
-            
+
             # Prefer segments closer to window center, with score as tiebreaker
             if best_seg is None:
                 # First candidate, always select
@@ -228,12 +246,12 @@ def spread_samples_across_duration(
                 # Same distance but higher score
                 best_idx = idx
                 best_seg = seg
-        
+
         # Select the best segment for this window
         if best_seg is not None:
             selected.append(best_seg)
             used_indices.add(best_idx)
-    
+
     # Sort selected segments by start time
     return sorted(selected, key=lambda s: s.start)
 
@@ -329,13 +347,13 @@ def deduplicate_segments_after_padding(
                 break
         if not drop:
             kept.append(cand)
-    
+
     # Enforce minimum gap between padded segments if min_gap_ms > 0
     if min_gap_ms > 0 and len(kept) > 1:
         # Sort by padded start time to process in order
         kept_sorted = sorted(kept, key=lambda s: s.start)
         filtered: list[Segment] = []
-        
+
         for seg in kept_sorted:
             # Find all segments in filtered that are too close to this segment
             too_close_segments = []
@@ -345,25 +363,25 @@ def deduplicate_segments_after_padding(
                 gap = seg.start - other.end
                 if gap >= 0 and gap < gap_sec:
                     too_close_segments.append(other)
-            
+
             if too_close_segments:
                 # Segments are too close, keep the highest-scored one
                 candidates = [seg] + too_close_segments
                 best = max(candidates, key=lambda s: s.score)
-                
+
                 # Remove all too_close_segments from filtered
                 for other in too_close_segments:
                     filtered.remove(other)
-                
+
                 # Add the best one if it's not already in filtered
                 if best not in filtered:
                     filtered.append(best)
             else:
                 # No conflicts, add this segment
                 filtered.append(seg)
-        
+
         kept = filtered
-    
+
     return kept
 
 
@@ -436,7 +454,7 @@ def process_file(
     analysis_audio, sr = sf.read(analysis_path)
     if analysis_audio.ndim > 1:
         analysis_audio = analysis_audio[:, 0]
-    
+
     # Verify full file was processed
     analysis_dur = len(analysis_audio) / sr
     expected_dur = float(audio_info.get("duration", 0.0))

@@ -56,7 +56,7 @@ def create_annotated_spectrogram(
     # Time axis: major ticks every 60s (labeled), medium ticks every 10s (lines only), minor ticks every 2s
     try:
         import numpy as np
-        from matplotlib.ticker import MultipleLocator, FixedLocator, FixedFormatter
+        from matplotlib.ticker import FixedFormatter, FixedLocator, MultipleLocator
 
         span = max(dur, 0.0)
         major_ticks = np.arange(0.0, span + 1e-9, 60.0)

@@ -1,6 +1,6 @@
 """Timeline ruler widget for DAW-style time display."""
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 

@@ -7,42 +7,35 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
-    QApplication,
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMenu,
-    QMenuBar,
     QMessageBox,
     QProgressBar,
-    QPushButton,
     QSplitter,
     QStatusBar,
+    QStyle,
     QTableView,
     QVBoxLayout,
     QWidget,
-    QStyle,
 )
 
 from samplepacker.detectors.base import Segment
-from samplepacker.gui.grid_manager import GridManager
+from samplepacker.gui.detection_manager import DetectionManager
+from samplepacker.gui.detection_settings import DetectionSettingsPanel
+from samplepacker.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
 from samplepacker.gui.navigator_scrollbar import NavigatorScrollbar
 from samplepacker.gui.pipeline_wrapper import PipelineWrapper
-from samplepacker.gui.detection_manager import DetectionManager
 from samplepacker.gui.sample_player import SamplePlayerWidget
-from samplepacker.gui.detection_settings import DetectionSettingsPanel
-from samplepacker.gui.grid_manager import GridMode, GridSettings, Subdivision
+from samplepacker.gui.sample_table_delegate import SampleTableDelegate
+from samplepacker.gui.sample_table_model import SampleTableModel
 from samplepacker.gui.spectrogram_tiler import SpectrogramTiler
 from samplepacker.gui.spectrogram_widget import SpectrogramWidget
 from samplepacker.gui.theme import ThemeManager
-from samplepacker.pipeline import ProcessingSettings
-from samplepacker.gui.sample_table_model import SampleTableModel
-from samplepacker.gui.sample_table_delegate import SampleTableDelegate
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +99,7 @@ class MainWindow(QMainWindow):
 
         # Connect signals
         self._connect_signals()
-        
+
         # Setup UI refresh timer if enabled
         if self._ui_refresh_rate_enabled:
             self._setup_refresh_timer()
@@ -130,12 +123,12 @@ class MainWindow(QMainWindow):
         self._settings_panel.settings_changed.connect(self._on_settings_changed)
         self._settings_panel.detect_samples_requested.connect(self._on_detect_samples)
         splitter.addWidget(self._settings_panel)
-        
+
         # Grid settings (stored in main window)
         self._grid_settings = GridSettings()
         self._grid_settings.snap_interval_sec = 1.0
         self._grid_settings.enabled = False
-        
+
         # Export settings (stored in main window)
         self._export_pre_pad_ms = 0.0
         self._export_post_pad_ms = 0.0
@@ -143,7 +136,7 @@ class MainWindow(QMainWindow):
         self._export_sample_rate: int | None = None
         self._export_bit_depth: str | None = None
         self._export_channels: str | None = None
-        
+
         # UI refresh rate settings
         self._ui_refresh_rate_enabled = True
         self._ui_refresh_rate_hz = 60
@@ -166,7 +159,7 @@ class MainWindow(QMainWindow):
         self._sample_player.previous_requested.connect(self._on_player_previous_requested)
         self._sample_player.loop_changed.connect(self._on_player_loop_changed)
         self._sample_player.seek_requested.connect(self._on_player_seek_requested)
-        
+
         # Connect media player position updates
         self._media_player.positionChanged.connect(self._on_media_position_changed)
         self._media_player.durationChanged.connect(self._on_media_duration_changed)
@@ -196,7 +189,7 @@ class MainWindow(QMainWindow):
         self._player_spectro_splitter.setStretchFactor(1, 1)  # Spectrogram stretches
         self._player_spectro_splitter.setCollapsible(0, True)  # Allow collapsing player
         self._player_spectro_splitter.setCollapsible(1, False)
-        
+
         editor_layout.addWidget(self._player_spectro_splitter)
 
         editor_widget.setLayout(editor_layout)
@@ -284,11 +277,11 @@ class MainWindow(QMainWindow):
         self._player_spectro_splitter.setSizes([120, 480])  # Player: 120px, Spectrogram: 480px
         editor_splitter.setSizes([600, 100])
         self._main_splitter.setSizes([600, 200])
-        
+
         # Store initial sizes for restore
         self._player_initial_size = 120
         self._info_table_initial_size = 200
-        
+
         # Connect splitter signals to update menu action states when manually collapsed/expanded
         self._main_splitter.splitterMoved.connect(self._on_info_splitter_moved)
         self._player_spectro_splitter.splitterMoved.connect(self._on_player_splitter_moved)
@@ -320,19 +313,19 @@ class MainWindow(QMainWindow):
 
         # Export menu
         export_menu = menubar.addMenu("&Export")
-        
+
         # Export pre-padding
         export_pre_pad_action = QAction("Export &Pre-padding...", self)
         export_pre_pad_action.triggered.connect(self._on_export_pre_pad_settings)
         export_menu.addAction(export_pre_pad_action)
-        
+
         # Export post-padding
         export_post_pad_action = QAction("Export &Post-padding...", self)
         export_post_pad_action.triggered.connect(self._on_export_post_pad_settings)
         export_menu.addAction(export_post_pad_action)
-        
+
         export_menu.addSeparator()
-        
+
         # Format
         format_menu = export_menu.addMenu("&Format")
         self._export_format_wav_action = QAction("&WAV", self)
@@ -340,22 +333,22 @@ class MainWindow(QMainWindow):
         self._export_format_wav_action.setChecked(True)
         self._export_format_wav_action.triggered.connect(lambda: self._on_export_format_changed("wav"))
         format_menu.addAction(self._export_format_wav_action)
-        
+
         self._export_format_flac_action = QAction("&FLAC", self)
         self._export_format_flac_action.setCheckable(True)
         self._export_format_flac_action.triggered.connect(lambda: self._on_export_format_changed("flac"))
         format_menu.addAction(self._export_format_flac_action)
-        
+
         # Sample rate
         sample_rate_action = QAction("&Sample Rate...", self)
         sample_rate_action.triggered.connect(self._on_export_sample_rate_settings)
         export_menu.addAction(sample_rate_action)
-        
+
         # Bit depth
         bit_depth_action = QAction("&Bit Depth...", self)
         bit_depth_action.triggered.connect(self._on_export_bit_depth_settings)
         export_menu.addAction(bit_depth_action)
-        
+
         # Channels
         channels_action = QAction("&Channels...", self)
         channels_action.triggered.connect(self._on_export_channels_settings)
@@ -418,20 +411,20 @@ class MainWindow(QMainWindow):
         duration_edits_menu = edit_menu.addMenu("&Duration Edits")
         self._duration_edit_mode = "expand_contract"  # Default mode
         self._duration_edit_actions = {}
-        
+
         expand_contract_action = QAction("&Expand/Contract", self)
         expand_contract_action.setCheckable(True)
         expand_contract_action.setChecked(True)
         expand_contract_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("expand_contract"))
         duration_edits_menu.addAction(expand_contract_action)
         self._duration_edit_actions["expand_contract"] = expand_contract_action
-        
+
         extend_from_start_action = QAction("Extend/Shorten (&From Start)", self)
         extend_from_start_action.setCheckable(True)
         extend_from_start_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_start"))
         duration_edits_menu.addAction(extend_from_start_action)
         self._duration_edit_actions["from_start"] = extend_from_start_action
-        
+
         extend_from_end_action = QAction("Extend/Shorten (From &End)", self)
         extend_from_end_action.setCheckable(True)
         extend_from_end_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_end"))
@@ -490,7 +483,7 @@ class MainWindow(QMainWindow):
         self._ui_refresh_rate_enabled_action.setChecked(True)
         self._ui_refresh_rate_enabled_action.toggled.connect(self._on_ui_refresh_rate_enabled_changed)
         view_menu.addAction(self._ui_refresh_rate_enabled_action)
-        
+
         refresh_rate_menu = view_menu.addMenu("Refresh &Rate")
         refresh_rates = [15, 30, 60, 75, 120, 144, 165, 240]
         self._refresh_rate_actions = {}
@@ -506,7 +499,7 @@ class MainWindow(QMainWindow):
 
         # Grid Settings
         grid_menu = view_menu.addMenu("&Grid Settings")
-        
+
         # Grid mode
         grid_mode_menu = grid_menu.addMenu("Grid &Mode")
         self._grid_mode_free_action = QAction("Free &Time", self)
@@ -514,22 +507,22 @@ class MainWindow(QMainWindow):
         self._grid_mode_free_action.setChecked(True)
         self._grid_mode_free_action.triggered.connect(self._on_grid_mode_changed)
         grid_mode_menu.addAction(self._grid_mode_free_action)
-        
+
         self._grid_mode_musical_action = QAction("&Musical Bar", self)
         self._grid_mode_musical_action.setCheckable(True)
         self._grid_mode_musical_action.triggered.connect(self._on_grid_mode_changed)
         grid_mode_menu.addAction(self._grid_mode_musical_action)
-        
+
         # Snap interval (for free time mode)
         snap_interval_action = QAction("Snap &Interval...", self)
         snap_interval_action.triggered.connect(self._on_snap_interval_settings)
         grid_menu.addAction(snap_interval_action)
-        
+
         # BPM (for musical bar mode)
         bpm_action = QAction("&BPM...", self)
         bpm_action.triggered.connect(self._on_bpm_settings)
         grid_menu.addAction(bpm_action)
-        
+
         # Subdivision (for musical bar mode)
         subdivision_menu = grid_menu.addMenu("&Subdivision")
         subdivisions = ["Whole", "Half", "Quarter", "Eighth", "Sixteenth", "Thirty-second"]
@@ -541,16 +534,16 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda checked, s=sub: self._on_subdivision_changed(s))
             subdivision_menu.addAction(action)
             self._subdivision_actions[sub] = action
-        
+
         grid_menu.addSeparator()
-        
+
         # Show grid
         self._grid_visible_action = QAction("Show &Grid", self)
         self._grid_visible_action.setCheckable(True)
         self._grid_visible_action.setChecked(True)
         self._grid_visible_action.toggled.connect(self._on_grid_visible_changed)
         grid_menu.addAction(self._grid_visible_action)
-        
+
         # Snap to grid
         self._snap_enabled_action = QAction("Snap to &Grid", self)
         self._snap_enabled_action.setCheckable(True)
@@ -588,7 +581,7 @@ class MainWindow(QMainWindow):
         """Connect signals."""
         # Settings panel
         self._settings_panel.settings_changed.connect(self._on_settings_changed)
-        
+
         # Spectrogram widget - operation start signals for undo
         self._spectrogram_widget.sample_drag_started.connect(self._on_sample_drag_started)
         self._spectrogram_widget.sample_resize_started.connect(self._on_sample_resize_started)
@@ -667,7 +660,7 @@ class MainWindow(QMainWindow):
 
             self._status_label.setText(f"Loaded: {file_path.name}")
             logger.info(f"Loaded audio file: {file_path}")
-            
+
             # Clear any existing segments and UI until detection is requested
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.current_segments = []
@@ -740,12 +733,12 @@ class MainWindow(QMainWindow):
             self._pipeline_wrapper.current_segments = segments
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(segments)
-        
+
         # Don't update player widget - player should only show info for currently playing sample
 
         # Update navigator with sample markers (enabled only)
         self._update_navigator_markers()
-        
+
         # Push initial undo state so users can undo back to original detected segments
         if self._pipeline_wrapper:
             self._push_undo_state()
@@ -787,7 +780,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._spectrogram_widget.set_selected_index(index)
-        
+
         # Don't update player widget - player should only show info for currently playing sample
 
     def _on_sample_moved(self, index: int, start: float, end: float) -> None:
@@ -811,26 +804,26 @@ class MainWindow(QMainWindow):
             # Update overlays only in spectrogram; no tile requests
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
-            
+
             # Update player widget if this is the currently playing sample
             if index == self._current_playing_index:
                 # Calculate new duration in milliseconds
                 new_duration = seg.duration()
                 new_duration_ms = int(new_duration * 1000)
-                
+
                 # Update segment boundaries for playback
                 self._current_playing_start = start
                 self._current_playing_end = end
-                
+
                 # Update player widget with new segment info
                 self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
-                
+
                 # Adjust scrub bar position based on new segment boundaries
                 # Current media player position is relative to the old extracted segment
                 if self._media_player.duration() > 0:
                     current_media_pos_ms = self._media_player.position()
                     old_duration = old_end - old_start
-                    
+
                     if old_duration > 0:
                         # Calculate position as fraction of old segment duration
                         relative_position = current_media_pos_ms / (old_duration * 1000.0)
@@ -840,10 +833,10 @@ class MainWindow(QMainWindow):
                         new_position_ms = max(0, min(new_position_ms, new_duration_ms))
                     else:
                         new_position_ms = 0
-                    
+
                     # Update scrub bar with adjusted position and new duration
                     self._sample_player.set_position(new_position_ms, new_duration_ms)
-                    
+
                     # Update paused position if paused
                     if self._is_paused:
                         self._paused_position = new_position_ms
@@ -869,26 +862,26 @@ class MainWindow(QMainWindow):
             # Update overlays only in spectrogram; no tile requests
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
-            
+
             # Update player widget if this is the currently playing sample
             if index == self._current_playing_index:
                 # Calculate new duration in milliseconds
                 new_duration = seg.duration()
                 new_duration_ms = int(new_duration * 1000)
-                
+
                 # Update segment boundaries for playback
                 self._current_playing_start = start
                 self._current_playing_end = end
-                
+
                 # Update player widget with new segment info
                 self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
-                
+
                 # Adjust scrub bar position based on new segment boundaries
                 # Current media player position is relative to the old extracted segment
                 if self._media_player.duration() > 0:
                     current_media_pos_ms = self._media_player.position()
                     old_duration = old_end - old_start
-                    
+
                     if old_duration > 0:
                         # Calculate position as fraction of old segment duration
                         relative_position = current_media_pos_ms / (old_duration * 1000.0)
@@ -898,10 +891,10 @@ class MainWindow(QMainWindow):
                         new_position_ms = max(0, min(new_position_ms, new_duration_ms))
                     else:
                         new_position_ms = 0
-                    
+
                     # Update scrub bar with adjusted position and new duration
                     self._sample_player.set_position(new_position_ms, new_duration_ms)
-                    
+
                     # Update paused position if paused
                     if self._is_paused:
                         self._paused_position = new_position_ms
@@ -966,7 +959,7 @@ class MainWindow(QMainWindow):
         """
         if not self._pipeline_wrapper or not self._current_audio_path:
             return
-        
+
         if 0 <= index < len(self._pipeline_wrapper.current_segments):
             self._current_playing_index = index
             seg = self._pipeline_wrapper.current_segments[index]
@@ -988,13 +981,13 @@ class MainWindow(QMainWindow):
             # Stop any currently playing audio and clear source
             self._media_player.stop()
             self._media_player.setSource(QUrl())
-            
+
             # Disconnect previous handlers to avoid multiple connections
             try:
                 self._media_player.mediaStatusChanged.disconnect()
             except Exception:
                 pass
-            
+
             # Clean up previous temp file
             if self._temp_playback_file and self._temp_playback_file.exists():
                 try:
@@ -1008,9 +1001,9 @@ class MainWindow(QMainWindow):
             temp_dir = Path(tempfile.gettempdir())
             unique_id = uuid.uuid4().hex
             self._temp_playback_file = temp_dir / f"samplepacker_playback_{unique_id}.wav"
-            
+
             duration = end_time - start_time
-            
+
             # Use FFmpeg to extract segment
             cmd = [
                 "ffmpeg",
@@ -1023,7 +1016,7 @@ class MainWindow(QMainWindow):
                 "-ac", "2",
                 str(self._temp_playback_file),
             ]
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 logger.error(f"FFmpeg extraction failed: {result.stderr}")
@@ -1034,14 +1027,14 @@ class MainWindow(QMainWindow):
             self._current_playing_start = start_time
             self._current_playing_end = end_time
             self._playback_stopped = False  # Reset stop flag when starting new playback
-            
+
             # Store paused position for resume (if applicable)
             seek_position = self._paused_position if self._is_paused and self._paused_position > 0 else 0
             was_paused = self._is_paused
             if was_paused:
                 self._is_paused = False
                 self._paused_position = 0
-            
+
             # Clean up temp file when playback finishes and handle looping
             def on_playback_finished(status):
                 if status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -1049,14 +1042,14 @@ class MainWindow(QMainWindow):
                     if self._playback_stopped:
                         self._playback_stopped = False
                         return
-                    
+
                     # Check if looping is enabled
                     if self._loop_enabled and self._current_playing_index is not None:
                         # Restart playback of the same segment
                         if self._current_playing_start is not None and self._current_playing_end is not None:
                             self._play_segment(self._current_playing_start, self._current_playing_end)
                         return
-                    
+
                     # Not looping, clean up
                     self._sample_player.set_playing(False)
                     self._current_playing_index = None
@@ -1064,14 +1057,14 @@ class MainWindow(QMainWindow):
                     self._current_playing_end = None
                     self._is_paused = False
                     self._paused_position = 0
-                    
+
                     if self._temp_playback_file and self._temp_playback_file.exists():
                         try:
                             self._temp_playback_file.unlink()
                             self._temp_playback_file = None
                         except Exception:
                             pass
-            
+
             # Handler to wait for media to load before playing
             def on_media_status_changed(status):
                 if status == QMediaPlayer.MediaStatus.LoadedMedia:
@@ -1079,21 +1072,21 @@ class MainWindow(QMainWindow):
                     # If resuming from pause, seek to paused position
                     if seek_position > 0:
                         self._media_player.setPosition(seek_position)
-                    
+
                     self._media_player.play()
                     # Update player state to show playing
                     self._sample_player.set_playing(True)
                 elif status == QMediaPlayer.MediaStatus.EndOfMedia:
                     # Also handle end of media in status changed
                     on_playback_finished(status)
-            
+
             # Connect handlers
             self._media_player.mediaStatusChanged.connect(on_media_status_changed)
-            
+
             # Load the extracted segment
             url = QUrl.fromLocalFile(str(self._temp_playback_file))
             self._media_player.setSource(url)
-            
+
         except Exception as e:
             logger.error(f"Failed to play segment: {e}")
             QMessageBox.warning(self, "Playback Error", f"Failed to play audio segment:\n{str(e)}")
@@ -1164,14 +1157,14 @@ class MainWindow(QMainWindow):
             self._media_player.mediaStatusChanged.disconnect()
         except Exception:
             pass
-        
+
         # Set stop flag to prevent restart
         self._playback_stopped = True
-        
+
         # Stop playback and clear source
         self._media_player.stop()
         self._media_player.setSource(QUrl())
-        
+
         # Update UI state
         self._sample_player.set_playing(False)
         self._current_playing_index = None
@@ -1179,7 +1172,7 @@ class MainWindow(QMainWindow):
         self._current_playing_end = None
         self._is_paused = False
         self._paused_position = 0
-        
+
         # Reset progress bar
         self._sample_player.set_position(0, self._sample_player._duration if hasattr(self._sample_player, '_duration') else 0)
 
@@ -1187,12 +1180,12 @@ class MainWindow(QMainWindow):
         """Handle player next request."""
         if not self._pipeline_wrapper or not self._pipeline_wrapper.current_segments:
             return
-        
+
         idx = self._sample_table_view.currentIndex()
         current_col = idx.column() if idx.isValid() else -1
         if current_col < 0:
             current_col = 0
-        
+
         next_col = min(current_col + 1, len(self._pipeline_wrapper.current_segments) - 1)
         if next_col != current_col:
             self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, next_col))
@@ -1202,12 +1195,12 @@ class MainWindow(QMainWindow):
         """Handle player previous request."""
         if not self._pipeline_wrapper or not self._pipeline_wrapper.current_segments:
             return
-        
+
         idx = self._sample_table_view.currentIndex()
         current_col = idx.column() if idx.isValid() else -1
         if current_col < 0:
             current_col = len(self._pipeline_wrapper.current_segments) - 1
-        
+
         prev_col = max(0, current_col - 1)
         if prev_col != current_col:
             self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, prev_col))
@@ -1221,7 +1214,7 @@ class MainWindow(QMainWindow):
         """
         # Store loop state for playback
         self._loop_enabled = enabled
-    
+
     def _on_media_position_changed(self, position: int) -> None:
         """Handle media player position change.
         
@@ -1234,7 +1227,7 @@ class MainWindow(QMainWindow):
             duration = self._sample_player._duration
         if duration > 0:
             self._sample_player.set_position(position, duration)
-    
+
     def _on_media_duration_changed(self, duration: int) -> None:
         """Handle media player duration change.
         
@@ -1246,7 +1239,7 @@ class MainWindow(QMainWindow):
             duration = self._sample_player._duration
         if duration > 0:
             self._sample_player.set_position(self._media_player.position(), duration)
-    
+
     def _on_player_seek_requested(self, position_ms: int) -> None:
         """Handle player seek request.
         
@@ -1532,20 +1525,20 @@ class MainWindow(QMainWindow):
         """Push current segments state to undo stack."""
         if not self._pipeline_wrapper:
             return
-        
+
         # Create deep copy of current segments
         segments_copy = copy.deepcopy(self._pipeline_wrapper.current_segments)
-        
+
         # Push to undo stack
         self._undo_stack.append(segments_copy)
-        
+
         # Limit stack size
         if len(self._undo_stack) > self._max_undo_stack_size:
             self._undo_stack.pop(0)
-        
+
         # Clear redo stack when new action is performed
         self._redo_stack.clear()
-        
+
         # Update menu action states
         self._update_undo_redo_actions()
 
@@ -1553,20 +1546,20 @@ class MainWindow(QMainWindow):
         """Undo last action."""
         if not self._undo_stack or not self._pipeline_wrapper:
             return
-        
+
         # Push current state to redo stack
         current_segments = copy.deepcopy(self._pipeline_wrapper.current_segments)
         self._redo_stack.append(current_segments)
-        
+
         # Pop from undo stack and restore
         previous_segments = self._undo_stack.pop()
         self._pipeline_wrapper.current_segments = copy.deepcopy(previous_segments)
-        
+
         # Update UI
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(self._pipeline_wrapper.current_segments)
         self._update_navigator_markers()
-        
+
         # Update menu action states
         self._update_undo_redo_actions()
 
@@ -1574,24 +1567,24 @@ class MainWindow(QMainWindow):
         """Redo last undone action."""
         if not self._redo_stack or not self._pipeline_wrapper:
             return
-        
+
         # Push current state to undo stack
         current_segments = copy.deepcopy(self._pipeline_wrapper.current_segments)
         self._undo_stack.append(current_segments)
-        
+
         # Limit stack size
         if len(self._undo_stack) > self._max_undo_stack_size:
             self._undo_stack.pop(0)
-        
+
         # Pop from redo stack and restore
         next_segments = self._redo_stack.pop()
         self._pipeline_wrapper.current_segments = copy.deepcopy(next_segments)
-        
+
         # Update UI
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(self._pipeline_wrapper.current_segments)
         self._update_navigator_markers()
-        
+
         # Update menu action states
         self._update_undo_redo_actions()
 
@@ -1745,7 +1738,7 @@ class MainWindow(QMainWindow):
 
     def _on_export_bit_depth_settings(self) -> None:
         """Handle export bit depth settings dialog."""
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        from PySide6.QtWidgets import QInputDialog
         options = ["16", "24", "32f", "None (original)"]
         current_index = 0
         if self._export_bit_depth:
@@ -1914,7 +1907,7 @@ class MainWindow(QMainWindow):
         old_end = seg.end
         old_duration = old_end - old_start
         audio_duration = self._spectrogram_widget._duration if hasattr(self._spectrogram_widget, '_duration') else float('inf')
-        
+
         if self._duration_edit_mode == "expand_contract":
             # Expand/contract equally on both sides from middle
             center = (old_start + old_end) / 2.0
@@ -1938,7 +1931,7 @@ class MainWindow(QMainWindow):
             new_start = max(0.0, old_end - new_duration)
             seg.start = new_start
             seg.end = old_end  # Keep end unchanged
-        
+
         # Update table cells to reflect changes (block signals to prevent re-triggering)
         self._sample_table.blockSignals(True)
         try:

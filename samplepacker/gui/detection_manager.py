@@ -76,7 +76,7 @@ class DetectionManager(QObject):
         try:
             def _cb(result: dict[str, Any]) -> None:
                 self.finished.emit(result)
-        
+
             self._future = self._pipeline_wrapper.detect_samples_async(output_dir=output_dir, callback=_cb)
         except Exception as e:
             self.error.emit(str(e))

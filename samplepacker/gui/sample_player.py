@@ -42,7 +42,7 @@ class SamplePlayerWidget(QWidget):
         self._total_samples: int = 0
         self._is_playing = False
         self._is_looping = False
-        
+
         # Playback position
         self._current_position = 0  # milliseconds
         self._duration = 0  # milliseconds
@@ -147,17 +147,17 @@ class SamplePlayerWidget(QWidget):
         controls_layout.addWidget(self._loop_checkbox)
 
         layout.addLayout(controls_layout)
-        
+
         # Playback progress bar (scrubbable)
         progress_layout = QHBoxLayout()
         progress_layout.setSpacing(8)
-        
+
         # Time label (current)
         self._time_current_label = QLabel("0:00")
         self._time_current_label.setMinimumWidth(50)
         self._time_current_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         progress_layout.addWidget(self._time_current_label)
-        
+
         # Scrubbable slider
         self._progress_slider = QSlider(Qt.Orientation.Horizontal)
         self._progress_slider.setRange(0, 0)
@@ -167,13 +167,13 @@ class SamplePlayerWidget(QWidget):
         self._progress_slider.sliderMoved.connect(self._on_slider_moved)
         self._progress_slider.sliderReleased.connect(self._on_slider_released)
         progress_layout.addWidget(self._progress_slider)
-        
+
         # Time label (total)
         self._time_total_label = QLabel("0:00")
         self._time_total_label.setMinimumWidth(50)
         self._time_total_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         progress_layout.addWidget(self._time_total_label)
-        
+
         layout.addLayout(progress_layout)
 
         self.setLayout(layout)
@@ -208,7 +208,7 @@ class SamplePlayerWidget(QWidget):
         else:
             self._play_button.setEnabled(True)
             self._pause_button.setEnabled(False)
-    
+
     def set_position(self, position_ms: int, duration_ms: int) -> None:
         """Set playback position.
         
@@ -222,26 +222,26 @@ class SamplePlayerWidget(QWidget):
             self._progress_slider.setRange(0, max(1, duration_ms))
             self._progress_slider.setValue(position_ms)
             self._update_time_labels()
-    
+
     def _update_time_labels(self) -> None:
         """Update time labels."""
         current_sec = self._current_position / 1000.0
         total_sec = self._duration / 1000.0
-        
+
         # Format current time
         current_mins = int(current_sec // 60)
         current_secs = int(current_sec % 60)
         self._time_current_label.setText(f"{current_mins}:{current_secs:02d}")
-        
+
         # Format total time
         total_mins = int(total_sec // 60)
         total_secs = int(total_sec % 60)
         self._time_total_label.setText(f"{total_mins}:{total_secs:02d}")
-    
+
     def _on_slider_pressed(self) -> None:
         """Handle slider pressed."""
         self._is_scrubbing = True
-    
+
     def _on_slider_moved(self, value: int) -> None:
         """Handle slider moved during scrubbing.
         
@@ -251,7 +251,7 @@ class SamplePlayerWidget(QWidget):
         if self._is_scrubbing:
             self._current_position = value
             self._update_time_labels()
-    
+
     def _on_slider_released(self) -> None:
         """Handle slider released."""
         if self._is_scrubbing:
