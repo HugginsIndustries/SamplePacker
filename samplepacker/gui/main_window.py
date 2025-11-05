@@ -376,6 +376,32 @@ class MainWindow(QMainWindow):
         self._show_disabled_action.setChecked(True)
         self._show_disabled_action.toggled.connect(self._on_toggle_show_disabled)
 
+        edit_menu.addSeparator()
+
+        # Duration Edits mode
+        duration_edits_menu = edit_menu.addMenu("&Duration Edits")
+        self._duration_edit_mode = "expand_contract"  # Default mode
+        self._duration_edit_actions = {}
+        
+        expand_contract_action = QAction("&Expand/Contract", self)
+        expand_contract_action.setCheckable(True)
+        expand_contract_action.setChecked(True)
+        expand_contract_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("expand_contract"))
+        duration_edits_menu.addAction(expand_contract_action)
+        self._duration_edit_actions["expand_contract"] = expand_contract_action
+        
+        extend_from_start_action = QAction("Extend/Shorten (&From Start)", self)
+        extend_from_start_action.setCheckable(True)
+        extend_from_start_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_start"))
+        duration_edits_menu.addAction(extend_from_start_action)
+        self._duration_edit_actions["from_start"] = extend_from_start_action
+        
+        extend_from_end_action = QAction("Extend/Shorten (From &End)", self)
+        extend_from_end_action.setCheckable(True)
+        extend_from_end_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_end"))
+        duration_edits_menu.addAction(extend_from_end_action)
+        self._duration_edit_actions["from_end"] = extend_from_end_action
+
         # View menu
         view_menu = menubar.addMenu("&View")
         zoom_in_action = QAction("Zoom &In", self)
@@ -1187,17 +1213,23 @@ class MainWindow(QMainWindow):
         Args:
             item: Changed item.
         """
-        # Handle changes only for the Enable row (row 0)
         try:
             row = item.row()
             col = item.column()
         except Exception:
             return
-        if row != 0 or not self._pipeline_wrapper:
+        
+        if not self._pipeline_wrapper:
             return
+            
         segments = self._pipeline_wrapper.current_segments
-        if 0 <= col < len(segments):
-            seg = segments[col]
+        if not (0 <= col < len(segments)):
+            return
+            
+        seg = segments[col]
+        
+        # Row 0: Enable checkbox
+        if row == 0:
             enabled = item.checkState() == Qt.CheckState.Checked
             if not hasattr(seg, "attrs") or seg.attrs is None:
                 seg.attrs = {}
@@ -1205,6 +1237,111 @@ class MainWindow(QMainWindow):
             # Refresh views using enabled filter
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
+        
+        # Row 2: Start time
+        elif row == 2:
+            try:
+                new_start = float(item.text())
+                # Validate: must be >= 0 and < current end
+                if new_start >= 0 and new_start < seg.end:
+                    old_start = seg.start
+                    seg.start = new_start
+                    # Block signals to prevent recursion
+                    self._sample_table.blockSignals(True)
+                    try:
+                        # Update table to reflect any clamping
+                        item.setText(f"{seg.start:.3f}")
+                        # Update duration cell
+                        duration_item = self._sample_table.item(4, col)
+                        if duration_item:
+                            duration_item.setText(f"{seg.duration():.3f}")
+                    finally:
+                        self._sample_table.blockSignals(False)
+                    # Refresh views (without updating table again)
+                    self._maybe_auto_reorder()
+                    self._spectrogram_widget.set_segments(self._get_display_segments())
+                    self._update_navigator_markers()
+                else:
+                    # Invalid value, restore previous
+                    self._sample_table.blockSignals(True)
+                    try:
+                        item.setText(f"{seg.start:.3f}")
+                    finally:
+                        self._sample_table.blockSignals(False)
+            except ValueError:
+                # Invalid text, restore previous
+                self._sample_table.blockSignals(True)
+                try:
+                    item.setText(f"{seg.start:.3f}")
+                finally:
+                    self._sample_table.blockSignals(False)
+        
+        # Row 3: End time
+        elif row == 3:
+            try:
+                new_end = float(item.text())
+                # Validate: must be > current start and <= duration
+                audio_duration = self._spectrogram_widget._duration if hasattr(self._spectrogram_widget, '_duration') else float('inf')
+                if new_end > seg.start and new_end <= audio_duration:
+                    old_end = seg.end
+                    seg.end = new_end
+                    # Block signals to prevent recursion
+                    self._sample_table.blockSignals(True)
+                    try:
+                        # Update table to reflect any clamping
+                        item.setText(f"{seg.end:.3f}")
+                        # Update duration cell
+                        duration_item = self._sample_table.item(4, col)
+                        if duration_item:
+                            duration_item.setText(f"{seg.duration():.3f}")
+                    finally:
+                        self._sample_table.blockSignals(False)
+                    # Refresh views (without updating table again)
+                    self._maybe_auto_reorder()
+                    self._spectrogram_widget.set_segments(self._get_display_segments())
+                    self._update_navigator_markers()
+                else:
+                    # Invalid value, restore previous
+                    self._sample_table.blockSignals(True)
+                    try:
+                        item.setText(f"{seg.end:.3f}")
+                    finally:
+                        self._sample_table.blockSignals(False)
+            except ValueError:
+                # Invalid text, restore previous
+                self._sample_table.blockSignals(True)
+                try:
+                    item.setText(f"{seg.end:.3f}")
+                finally:
+                    self._sample_table.blockSignals(False)
+        
+        # Row 4: Duration
+        elif row == 4:
+            try:
+                new_duration = float(item.text())
+                # Validate: must be > 0
+                if new_duration > 0:
+                    # Apply duration change based on selected mode
+                    # (this already blocks signals internally)
+                    self._apply_duration_change(seg, new_duration, col)
+                    # Refresh views (without updating table again)
+                    self._maybe_auto_reorder()
+                    self._spectrogram_widget.set_segments(self._get_display_segments())
+                    self._update_navigator_markers()
+                else:
+                    # Invalid value, restore previous
+                    self._sample_table.blockSignals(True)
+                    try:
+                        item.setText(f"{seg.duration():.3f}")
+                    finally:
+                        self._sample_table.blockSignals(False)
+            except ValueError:
+                # Invalid text, restore previous
+                self._sample_table.blockSignals(True)
+                try:
+                    item.setText(f"{seg.duration():.3f}")
+                finally:
+                    self._sample_table.blockSignals(False)
 
     def _on_play_button_clicked(self, index: int) -> None:
         """Handle play button click.
@@ -1300,19 +1437,22 @@ class MainWindow(QMainWindow):
             cell.setLayout(layout)
             self._sample_table.setCellWidget(1, i, cell)
 
-            # Start (row 2)
+            # Start (row 2) - editable
             start_item = QTableWidgetItem(f"{seg.start:.3f}")
             start_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            start_item.setFlags(start_item.flags() | Qt.ItemFlag.ItemIsEditable)
             self._sample_table.setItem(2, i, start_item)
 
-            # End (row 3)
+            # End (row 3) - editable
             end_item = QTableWidgetItem(f"{seg.end:.3f}")
             end_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            end_item.setFlags(end_item.flags() | Qt.ItemFlag.ItemIsEditable)
             self._sample_table.setItem(3, i, end_item)
 
-            # Duration (row 4)
+            # Duration (row 4) - editable
             duration_item = QTableWidgetItem(f"{seg.duration():.3f}")
             duration_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            duration_item.setFlags(duration_item.flags() | Qt.ItemFlag.ItemIsEditable)
             self._sample_table.setItem(4, i, duration_item)
 
             # Detector (row 5)
@@ -1872,4 +2012,67 @@ class MainWindow(QMainWindow):
         """Handle snap enabled change."""
         self._grid_settings.enabled = checked
         self._on_settings_changed()
+
+    def _on_duration_edit_mode_changed(self, mode: str) -> None:
+        """Handle duration edit mode change.
+        
+        Args:
+            mode: One of "expand_contract", "from_start", "from_end"
+        """
+        self._duration_edit_mode = mode
+        # Update action states
+        for m, action in self._duration_edit_actions.items():
+            action.setChecked(m == mode)
+
+    def _apply_duration_change(self, seg: Segment, new_duration: float, col: int) -> None:
+        """Apply duration change to segment based on selected mode.
+        
+        Args:
+            seg: Segment to modify.
+            new_duration: New duration in seconds.
+            col: Column index (for updating table cells).
+        """
+        old_start = seg.start
+        old_end = seg.end
+        old_duration = old_end - old_start
+        audio_duration = self._spectrogram_widget._duration if hasattr(self._spectrogram_widget, '_duration') else float('inf')
+        
+        if self._duration_edit_mode == "expand_contract":
+            # Expand/contract equally on both sides from middle
+            center = (old_start + old_end) / 2.0
+            half_duration = new_duration / 2.0
+            new_start = max(0.0, center - half_duration)
+            new_end = min(audio_duration, center + half_duration)
+            # If clamping occurred, adjust the other side to maintain duration
+            if new_start == 0.0:
+                new_end = min(audio_duration, new_start + new_duration)
+            elif new_end == audio_duration:
+                new_start = max(0.0, new_end - new_duration)
+            seg.start = new_start
+            seg.end = new_end
+        elif self._duration_edit_mode == "from_start":
+            # Adjust end time based on start time
+            new_end = min(audio_duration, old_start + new_duration)
+            seg.start = old_start  # Keep start unchanged
+            seg.end = new_end
+        elif self._duration_edit_mode == "from_end":
+            # Adjust start time based on end time
+            new_start = max(0.0, old_end - new_duration)
+            seg.start = new_start
+            seg.end = old_end  # Keep end unchanged
+        
+        # Update table cells to reflect changes (block signals to prevent re-triggering)
+        self._sample_table.blockSignals(True)
+        try:
+            start_item = self._sample_table.item(2, col)
+            if start_item:
+                start_item.setText(f"{seg.start:.3f}")
+            end_item = self._sample_table.item(3, col)
+            if end_item:
+                end_item.setText(f"{seg.end:.3f}")
+            duration_item = self._sample_table.item(4, col)
+            if duration_item:
+                duration_item.setText(f"{seg.duration():.3f}")
+        finally:
+            self._sample_table.blockSignals(False)
 

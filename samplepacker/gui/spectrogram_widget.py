@@ -104,6 +104,13 @@ class SpectrogramWidget(QWidget):
         self._pending_create_end: float | None = None
         self._original_segment_start: float | None = None  # For ESC cancellation
         self._original_segment_end: float | None = None  # For ESC cancellation
+        
+        # Drag start timer for double-click prevention
+        self._drag_start_timer: QTimer | None = None
+        self._min_hold_duration_ms = 150  # Minimum hold duration before drag starts
+        self._pending_drag_operation: str | None = None  # 'drag', 'resize_left', 'resize_right', or None
+        self._pending_drag_index: int | None = None  # Segment index for pending drag
+        self._pending_drag_click_time: float | None = None  # Time position where click occurred
 
         # Theme colors
         self._theme_colors = {
@@ -609,7 +616,7 @@ class SpectrogramWidget(QWidget):
             # Check if clicking on a segment
             clicked_index = self._find_segment_at_time(time)
             if clicked_index is not None:
-                # Update selection
+                # Update selection immediately
                 self._selected_index = clicked_index
                 self.sample_selected.emit(clicked_index)
                 
@@ -619,23 +626,45 @@ class SpectrogramWidget(QWidget):
                 self._original_segment_start = seg.start
                 self._original_segment_end = seg.end
                 handle_width = self._get_handle_width()
+                
+                # Cancel any pending drag timer
+                if self._drag_start_timer is not None:
+                    self._drag_start_timer.stop()
+                    self._drag_start_timer = None
+                
+                # Determine operation type and start timer
                 if abs(time - seg.start) < handle_width:
-                    self.sample_resize_started.emit(clicked_index)
-                    self._resizing_left = True
-                    self._drag_start_time = time  # Click position
-                    self._resize_initial_start = seg.start  # Store initial start
+                    # Will resize left edge
+                    self._pending_drag_operation = 'resize_left'
+                    self._pending_drag_index = clicked_index
+                    self._pending_drag_click_time = time
+                    # Start timer to delay actual resize start
+                    self._drag_start_timer = QTimer(self)
+                    self._drag_start_timer.setSingleShot(True)
+                    self._drag_start_timer.timeout.connect(self._on_drag_timer_expired)
+                    self._drag_start_timer.start(self._min_hold_duration_ms)
                 elif abs(time - seg.end) < handle_width:
-                    self.sample_resize_started.emit(clicked_index)
-                    self._resizing_right = True
-                    self._drag_start_time = time  # Click position
-                    self._resize_initial_end = seg.end  # Store initial end
+                    # Will resize right edge
+                    self._pending_drag_operation = 'resize_right'
+                    self._pending_drag_index = clicked_index
+                    self._pending_drag_click_time = time
+                    # Start timer to delay actual resize start
+                    self._drag_start_timer = QTimer(self)
+                    self._drag_start_timer.setSingleShot(True)
+                    self._drag_start_timer.timeout.connect(self._on_drag_timer_expired)
+                    self._drag_start_timer.start(self._min_hold_duration_ms)
                 else:
-                    self.sample_drag_started.emit(clicked_index)
-                    self._dragging = True
-                    self._drag_start_time = time
-                    self._drag_start_pos = QPoint(int(event.x), int(event.y))
+                    # Will drag segment
+                    self._pending_drag_operation = 'drag'
+                    self._pending_drag_index = clicked_index
+                    self._pending_drag_click_time = time
+                    # Start timer to delay actual drag start
+                    self._drag_start_timer = QTimer(self)
+                    self._drag_start_timer.setSingleShot(True)
+                    self._drag_start_timer.timeout.connect(self._on_drag_timer_expired)
+                    self._drag_start_timer.start(self._min_hold_duration_ms)
             else:
-                # Start creating new sample
+                # Start creating new sample (no delay needed)
                 self.sample_create_started.emit()
                 self._creating_sample = True
                 self._create_start_time = time
@@ -645,9 +674,47 @@ class SpectrogramWidget(QWidget):
 
             self._update_display()
 
+    def _on_drag_timer_expired(self) -> None:
+        """Handle drag start timer expiration - actually start the drag/resize operation."""
+        if self._pending_drag_operation is None or self._pending_drag_index is None or self._pending_drag_click_time is None:
+            return
+        
+        clicked_index = self._pending_drag_index
+        time = self._pending_drag_click_time
+        seg = self._segments[clicked_index]
+        
+        if self._pending_drag_operation == 'resize_left':
+            self.sample_resize_started.emit(clicked_index)
+            self._resizing_left = True
+            self._drag_start_time = time
+            self._resize_initial_start = seg.start
+        elif self._pending_drag_operation == 'resize_right':
+            self.sample_resize_started.emit(clicked_index)
+            self._resizing_right = True
+            self._drag_start_time = time
+            self._resize_initial_end = seg.end
+        elif self._pending_drag_operation == 'drag':
+            self.sample_drag_started.emit(clicked_index)
+            self._dragging = True
+            self._drag_start_time = time
+        
+        # Clear pending state
+        self._pending_drag_operation = None
+        self._pending_drag_index = None
+        self._pending_drag_click_time = None
+        self._drag_start_timer = None
+
     def _on_mouse_release(self, event) -> None:
         """Handle mouse release event."""
         if event.button == 1:  # Left button
+            # Cancel pending drag timer if released before hold duration
+            if self._drag_start_timer is not None and self._drag_start_timer.isActive():
+                self._drag_start_timer.stop()
+                self._drag_start_timer = None
+                self._pending_drag_operation = None
+                self._pending_drag_index = None
+                self._pending_drag_click_time = None
+            
             # Apply pending changes and emit signals
             if self._dragging and self._selected_index is not None and self._pending_drag_start is not None and self._pending_drag_end is not None:
                 # Restore original segment position first
@@ -924,6 +991,14 @@ class SpectrogramWidget(QWidget):
             elif event.type() == QEvent.Type.KeyPress:
                 from PySide6.QtGui import QKeyEvent
                 if isinstance(event, QKeyEvent) and event.key() == Qt.Key.Key_Escape:
+                    # Cancel any pending drag timer
+                    if self._drag_start_timer is not None:
+                        self._drag_start_timer.stop()
+                        self._drag_start_timer = None
+                        self._pending_drag_operation = None
+                        self._pending_drag_index = None
+                        self._pending_drag_click_time = None
+                    
                     # Cancel any ongoing drag/resize/create operation
                     if self._dragging or self._resizing_left or self._resizing_right or self._creating_sample:
                         # Restore original segment positions if dragging/resizing
