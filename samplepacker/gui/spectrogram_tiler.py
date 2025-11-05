@@ -2,10 +2,13 @@
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from concurrent.futures import ThreadPoolExecutor, Future
+from collections import OrderedDict
 
 import numpy as np
 from scipy import signal
+from matplotlib.cm import get_cmap
 import soundfile as sf
 
 logger = logging.getLogger(__name__)
@@ -21,6 +24,7 @@ class SpectrogramTile:
         spectrogram: np.ndarray,
         frequencies: np.ndarray,
         sample_rate: int,
+        rgba: np.ndarray | None = None,
     ):
         """Initialize spectrogram tile.
 
@@ -36,6 +40,7 @@ class SpectrogramTile:
         self.spectrogram = spectrogram
         self.frequencies = frequencies
         self.sample_rate = sample_rate
+        self.rgba = rgba  # Optional precolored image (freq x time x 4, uint8)
 
     @property
     def duration(self) -> float:
@@ -68,7 +73,17 @@ class SpectrogramTiler:
         self.hop_length = hop_length or (nfft // 4)
         self.fmin = fmin
         self.fmax = fmax
-        self._tile_cache: dict[str, SpectrogramTile] = {}
+        # Simple LRU cache with bounded size
+        self._tile_cache: OrderedDict[str, SpectrogramTile] = OrderedDict()
+        self._max_cache_items: int = 64
+        # Background executor for async tile generation
+        try:
+            import os
+            max_workers = max(2, min(8, (os.cpu_count() or 4) // 2))
+        except Exception:
+            max_workers = 4
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="SpecTile")
+        self._cmap = get_cmap('viridis')
 
     def _get_cache_key(self, audio_path: Path, start_time: float, end_time: float) -> str:
         """Generate cache key for tile.
@@ -103,30 +118,32 @@ class SpectrogramTiler:
         """
         cache_key = self._get_cache_key(audio_path, start_time, end_time)
         if cache_key in self._tile_cache:
+            # Move to end to mark as recently used
+            tile = self._tile_cache.pop(cache_key)
+            self._tile_cache[cache_key] = tile
             logger.debug(f"Using cached tile: {cache_key}")
-            return self._tile_cache[cache_key]
+            return tile
 
         logger.debug(f"Generating tile: {audio_path} [{start_time:.2f}s - {end_time:.2f}s]")
 
-        # Load audio file
-        audio_data, sr = sf.read(audio_path)
-        if audio_data.ndim > 1:
-            # Convert to mono
-            audio_data = np.mean(audio_data, axis=1)
+        # Probe file sample rate without loading full data
+        file_info = sf.info(audio_path)
+        sr = int(file_info.samplerate)
 
         # Resample if needed
         if sample_rate and sample_rate != sr:
-            from scipy.signal import resample
-
-            num_samples = int(len(audio_data) * sample_rate / sr)
-            audio_data = resample(audio_data, num_samples)
-            sr = sample_rate
+            # We'll resample after partial read if required
+            target_sr = int(sample_rate)
+        else:
+            target_sr = sr
 
         # Extract time range
-        start_sample = int(start_time * sr)
-        end_sample = int(end_time * sr)
-        start_sample = max(0, min(start_sample, len(audio_data)))
-        end_sample = max(start_sample, min(end_sample, len(audio_data)))
+        start_sample = int(max(0.0, start_time) * sr)
+        end_sample = int(max(start_time, end_time) * sr)
+        # clamp to file frames
+        total_frames = int(file_info.frames)
+        start_sample = max(0, min(start_sample, total_frames))
+        end_sample = max(start_sample, min(end_sample, total_frames))
 
         if start_sample >= end_sample:
             # Empty tile
@@ -138,7 +155,16 @@ class SpectrogramTiler:
                 sample_rate=sr,
             )
 
-        audio_segment = audio_data[start_sample:end_sample]
+        # Read only the needed frames
+        audio_segment, _ = sf.read(audio_path, start=start_sample, stop=end_sample, always_2d=False)
+        if getattr(audio_segment, "ndim", 1) > 1:
+            audio_segment = np.mean(audio_segment, axis=1)
+        # Optional resample of the visible window only
+        if target_sr != sr and len(audio_segment) > 0:
+            from scipy.signal import resample
+            num_samples = int(len(audio_segment) * target_sr / sr)
+            audio_segment = resample(audio_segment, num_samples)
+            sr = target_sr
 
         # Compute spectrogram
         frequencies, times, spectrogram = signal.spectrogram(
@@ -198,6 +224,9 @@ class SpectrogramTiler:
         # Convert to dB
         spectrogram_db = 10 * np.log10(spectrogram + 1e-10)
 
+        # Precompute RGBA once for fast drawing (freq x time x 4)
+        rgba = self._to_rgba(spectrogram_db)
+
         # Adjust times to absolute time
         times = times + start_time
 
@@ -207,15 +236,16 @@ class SpectrogramTiler:
             spectrogram=spectrogram_db,
             frequencies=frequencies,
             sample_rate=sr,
+            rgba=rgba,
         )
 
-        # Cache tile (limit cache size)
-        if len(self._tile_cache) > 50:
-            # Remove oldest entry (simple FIFO)
-            oldest_key = next(iter(self._tile_cache))
-            del self._tile_cache[oldest_key]
-
+        # Cache tile with LRU eviction
         self._tile_cache[cache_key] = tile
+        if len(self._tile_cache) > self._max_cache_items:
+            try:
+                self._tile_cache.popitem(last=False)
+            except Exception:
+                pass
         return tile
 
     def generate_overview(self, audio_path: Path, duration: float, sample_rate: int | None = None) -> SpectrogramTile:
@@ -249,10 +279,8 @@ class SpectrogramTiler:
             audio_data = resample(audio_data, num_samples)
             sr = sample_rate
 
-        # Downsample for overview (every Nth sample)
-        downsample_factor = max(1, int(sr / 1000))  # ~1kHz sample rate for overview
-        audio_data = audio_data[::downsample_factor]
-        sr_overview = sr // downsample_factor
+        # Keep full bandwidth for overview to fill vertical axis; use coarse hops for speed
+        sr_overview = sr
 
         # Compute spectrogram
         frequencies, times, spectrogram = signal.spectrogram(
@@ -309,8 +337,9 @@ class SpectrogramTiler:
                 spectrogram = spectrogram[fmin_idx:fmax_idx, :]
                 logger.debug(f"Frequency filtering applied (overview): filtered range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, bins={len(frequencies)}")
 
-        # Convert to dB
+        # Convert to dB and precompute RGBA
         spectrogram_db = 10 * np.log10(spectrogram + 1e-10)
+        rgba = self._to_rgba(spectrogram_db)
 
         return SpectrogramTile(
             start_time=0.0,
@@ -318,10 +347,81 @@ class SpectrogramTiler:
             spectrogram=spectrogram_db,
             frequencies=frequencies,
             sample_rate=sr_overview,
+            rgba=rgba,
         )
 
     def clear_cache(self) -> None:
         """Clear tile cache."""
         self._tile_cache.clear()
         logger.debug("Cleared spectrogram tile cache")
+
+    # --- Helpers ---
+    def _to_rgba(self, spec_db: np.ndarray) -> np.ndarray:
+        """Convert dB spectrogram to RGBA uint8 array (freq x time x 4).
+
+        Uses robust normalization (5th-95th percentile) to improve contrast.
+        """
+        if spec_db.size == 0:
+            return np.zeros((0, 0, 4), dtype=np.uint8)
+        try:
+            lo = float(np.nanpercentile(spec_db, 5))
+            hi = float(np.nanpercentile(spec_db, 95))
+            if hi <= lo:
+                lo = float(np.nanmin(spec_db))
+                hi = float(np.nanmax(spec_db) + 1e-6)
+            norm = (spec_db - lo) / (hi - lo)
+            norm = np.clip(norm, 0.0, 1.0)
+            # cmap expects (H, W) with values [0,1] and returns RGBA in [0,1]
+            rgba = self._cmap(norm, bytes=True)  # returns uint8 (H, W, 4)
+            return rgba.astype(np.uint8)
+        except Exception:
+            # Fallback to zeros on any failure
+            return np.zeros((*spec_db.shape, 4), dtype=np.uint8)
+
+    # --- Async API ---
+    def request_tile(
+        self,
+        audio_path: Path,
+        start_time: float,
+        end_time: float,
+        sample_rate: int | None = None,
+        callback: Callable[[SpectrogramTile], None] | None = None,
+    ) -> Future:
+        """Submit tile generation to background executor and return a Future.
+
+        If callback is provided, it will be called with the resulting tile in the worker's completion context.
+        """
+        def task() -> SpectrogramTile:
+            return self.generate_tile(audio_path, start_time, end_time, sample_rate=sample_rate)
+
+        fut = self._executor.submit(task)
+        if callback is not None:
+            def _done(f: Future) -> None:
+                try:
+                    tile = f.result()
+                    callback(tile)
+                except Exception:
+                    pass
+            fut.add_done_callback(_done)
+        return fut
+
+    def prefetch_neighbors(
+        self,
+        audio_path: Path,
+        center_start: float,
+        center_end: float,
+        sample_rate: int | None = None,
+    ) -> None:
+        """Prefetch tiles adjacent to the current view to improve perceived responsiveness."""
+        dur = max(0.0, center_end - center_start)
+        if dur <= 0:
+            return
+        left_start = max(0.0, center_start - dur)
+        left_end = center_start
+        right_start = center_end
+        right_end = center_end + dur
+
+        # Fire-and-forget; callbacks not necessary
+        self.request_tile(audio_path, left_start, left_end, sample_rate=sample_rate)
+        self.request_tile(audio_path, right_start, right_end, sample_rate=sample_rate)
 

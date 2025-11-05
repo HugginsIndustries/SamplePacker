@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QMenu, QWidget
 
@@ -32,6 +32,11 @@ class SpectrogramWidget(QWidget):
     sample_drag_started = Signal(int)  # Emitted when sample drag starts (index)
     sample_resize_started = Signal(int)  # Emitted when sample resize starts (index)
     sample_create_started = Signal()  # Emitted when sample creation starts
+    # New actions
+    sample_disable_requested = Signal(int, bool)  # (index, disabled)
+    sample_disable_others_requested = Signal(int)  # (index)
+    sample_center_requested = Signal(int)  # (index)
+    sample_center_fill_requested = Signal(int)  # (index)
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize spectrogram widget.
@@ -56,6 +61,10 @@ class SpectrogramWidget(QWidget):
         # Spectrogram data
         self._tiler = SpectrogramTiler()
         self._current_tile: Any = None
+        self._overview_tile: Any = None
+        self._im = None  # persistent AxesImage for spectrogram
+        self._grid_artists: list[Any] = []
+        self._segment_artists: list[Any] = []
         self._audio_path: Path | None = None
         self._duration = 0.0
         self._start_time = 0.0
@@ -69,6 +78,7 @@ class SpectrogramWidget(QWidget):
 
         # Grid
         self._grid_manager = GridManager()
+        self._show_disabled: bool = True
 
         # Interaction state
         self._dragging = False
@@ -186,6 +196,15 @@ class SpectrogramWidget(QWidget):
         self._grid_manager = grid_manager
         self._update_display()
 
+    def set_show_disabled(self, show: bool) -> None:
+        """Control whether disabled samples are drawn with indication.
+
+        Args:
+            show: True to show disabled samples (with visual indication).
+        """
+        self._show_disabled = bool(show)
+        self._update_display()
+
     def set_audio_path(self, audio_path: Path | None) -> None:
         """Set audio file path for spectrogram generation.
 
@@ -193,7 +212,36 @@ class SpectrogramWidget(QWidget):
             audio_path: Path to audio file or None.
         """
         self._audio_path = audio_path
+        try:
+            self._tiler.clear_cache()
+        except Exception:
+            pass
         self._update_display()
+
+    def set_overview_tile(self, tile: Any) -> None:
+        """Provide a low-resolution overview tile covering the entire file.
+
+        This is used as a visual fallback while high-res tiles are loading.
+        """
+        self._overview_tile = tile
+        # If no current detail tile yet, draw the overview immediately
+        self._update_display()
+
+    def preload_current_view(self) -> None:
+        """Synchronously generate and display the current view's spectrogram tile.
+
+        Use only at initialization to ensure the first frame is visible immediately.
+        """
+        try:
+            if self._audio_path and self._audio_path.exists() and self._end_time > self._start_time:
+                tile = self._tiler.generate_tile(self._audio_path, self._start_time, self._end_time, sample_rate=None)
+                self._current_tile = tile
+                # Force an immediate draw with the new tile
+                self._im = None  # ensure creation if not present
+                self._draw_overlays()
+                self._update_display()
+        except Exception:
+            pass
 
     def set_frequency_range(self, fmin: float | None = None, fmax: float | None = None) -> None:
         """Set frequency range for spectrogram.
@@ -204,6 +252,10 @@ class SpectrogramWidget(QWidget):
         """
         self._tiler.fmin = fmin
         self._tiler.fmax = fmax
+        try:
+            self._tiler.clear_cache()
+        except Exception:
+            pass
         self._update_display()
 
     def set_theme_colors(self, colors: dict[str, QColor]) -> None:
@@ -216,11 +268,10 @@ class SpectrogramWidget(QWidget):
         self._update_display()
 
     def _update_display(self) -> None:
-        """Update spectrogram display."""
+        """Update spectrogram display with persistent image and async tiles."""
         if self._duration <= 0:
             return
-
-        self._ax.clear()
+        # Keep axes styling
         self._ax.set_facecolor((0x1E / 255, 0x1E / 255, 0x1E / 255))
         self._ax.set_xlabel("Time (s)", color="white")
         self._ax.set_ylabel("Frequency (Hz)", color="white")
@@ -228,132 +279,129 @@ class SpectrogramWidget(QWidget):
         for spine in self._ax.spines.values():
             spine.set_color("white")
 
-        # Generate spectrogram tile for visible range
-        spectrogram_displayed = False
-        if self._audio_path and self._audio_path.exists():
+        # Show tile only if it matches current view (or use overview fallback)
+        current_tile_matches = (
+            self._current_tile is not None
+            and abs(self._current_tile.start_time - self._start_time) < 0.1
+            and abs(self._current_tile.end_time - self._end_time) < 0.1
+        )
+        if current_tile_matches and self._current_tile.spectrogram.size > 0:
             try:
-                logger.debug(f"Generating spectrogram tile: {self._audio_path} [{self._start_time:.2f}s - {self._end_time:.2f}s]")
-                self._current_tile = self._tiler.generate_tile(
-                    self._audio_path,
-                    self._start_time,
-                    self._end_time,
-                )
-                
-                logger.debug(f"Tile generated: spectrogram.size={self._current_tile.spectrogram.size}, frequencies.len={len(self._current_tile.frequencies)}")
-                
-                # Display spectrogram
-                if self._current_tile.spectrogram.size > 0 and len(self._current_tile.frequencies) > 0:
-                    # Get frequency and time arrays
-                    freq = self._current_tile.frequencies
-                    spec = self._current_tile.spectrogram
-                    
-                    # Check data dimensions - spectrogram is (freq_bins x time_bins)
-                    if len(freq) == 0 or spec.shape[0] == 0 or spec.shape[1] == 0:
-                        logger.warning(f"Empty spectrogram data: freq={len(freq)}, spec.shape={spec.shape}")
-                    else:
-                        # Verify frequency array matches spectrogram dimensions
-                        if len(freq) != spec.shape[0]:
-                            logger.warning(f"Frequency array length ({len(freq)}) doesn't match spectrogram frequency dimension ({spec.shape[0]})")
-                        else:
-                            # Normalize spectrogram data for display
-                            # dB values can be negative, need to normalize to 0-1 range for colormap
-                            spec_min = np.nanmin(spec)
-                            spec_max = np.nanmax(spec)
-                            
-                            logger.debug(f"Spectrogram data range: min={spec_min:.2f}, max={spec_max:.2f}, shape={spec.shape}")
-                            
-                            # If all values are the same, use a default range
-                            if spec_max <= spec_min:
-                                logger.warning(f"Spectrogram has constant values: {spec_min:.2f}")
-                                spec_normalized = np.zeros_like(spec)
-                            else:
-                                # Normalize to 0-1 range
-                                spec_normalized = (spec - spec_min) / (spec_max - spec_min)
-                            
-                            # Calculate extent for imshow
-                            # extent = [xmin, xmax, ymin, ymax] where x is time, y is frequency
-                            freq_min = freq[0] if len(freq) > 0 else 0
-                            freq_max = freq[-1] if len(freq) > 0 else 20000
-                            
-                            extent = [
-                                self._current_tile.start_time,
-                                self._current_tile.end_time,
-                                freq_min,
-                                freq_max,
-                            ]
-                            
-                            # Display using imshow with viridis colormap
-                            # Note: imshow expects array in (rows x cols) format where rows correspond to y-axis
-                            # scipy.signal.spectrogram returns (freq_bins x time_bins) which is correct
-                            im = self._ax.imshow(
-                                spec_normalized,
-                                aspect="auto",
-                                origin="lower",
-                                extent=extent,
-                                cmap="viridis",
-                                interpolation="bilinear",
-                                vmin=0.0,
-                                vmax=1.0,
-                                zorder=0,  # Ensure spectrogram is drawn first (behind everything)
-                            )
-                            
-                            spectrogram_displayed = True
-                            logger.info(f"Successfully displayed spectrogram: shape={spec.shape}, extent={extent}, freq_range=[{freq_min:.1f}, {freq_max:.1f}]")
-                else:
-                    logger.warning(f"Spectrogram tile has empty data: size={self._current_tile.spectrogram.size}, frequencies.len={len(self._current_tile.frequencies)}")
-                    if self._tiler.fmin is not None or self._tiler.fmax is not None:
-                        logger.warning(f"Tiler frequency filter: fmin={self._tiler.fmin}, fmax={self._tiler.fmax}")
-                    if self._current_tile.spectrogram.size == 0 and len(self._current_tile.frequencies) == 0:
-                        logger.error(f"Spectrogram tile is completely empty - this may indicate a frequency filtering issue")
-            except Exception as e:
-                import traceback
-                logger.error(f"Failed to generate spectrogram tile: {e}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                self._apply_tile_to_image(self._current_tile)
+            except Exception:
+                pass
+        elif self._overview_tile is not None and self._overview_tile.spectrogram.size > 0:
+            try:
+                # Extract/crop overview to current view window
+                self._apply_overview_to_image()
+            except Exception:
+                pass
+
+        # Async request for current view
+        if self._audio_path and self._audio_path.exists():
+            def _on_ready(tile):
+                # Ensure UI updates occur on the GUI thread
+                def _apply():
+                    self._current_tile = tile
+                    try:
+                        self._apply_tile_to_image(tile)
+                        self._draw_overlays()
+                    except Exception:
+                        pass
+                    # Use draw_idle to coalesce repaints
+                    self._canvas.draw_idle()
+                try:
+                    QTimer.singleShot(0, _apply)
+                except Exception:
+                    # Fallback in case QTimer fails in this context
+                    _apply()
+            try:
+                self._tiler.request_tile(self._audio_path, self._start_time, self._end_time, sample_rate=None, callback=_on_ready)
+                self._tiler.prefetch_neighbors(self._audio_path, self._start_time, self._end_time)
+            except Exception:
+                pass
         else:
             if not self._audio_path:
                 logger.debug("No audio path set, skipping spectrogram generation")
             elif not self._audio_path.exists():
                 logger.warning(f"Audio path does not exist: {self._audio_path}")
 
-        # Draw grid (on top of spectrogram)
+        # Draw overlays (includes segments, grid, preview)
+        self._draw_overlays()
+
+        self._canvas.draw()
+
+    def _draw_overlays(self) -> None:
+        """Redraw grid, segments, and previews without clearing the spectrogram image."""
+        # Clear previous overlay artists
+        for a in self._grid_artists:
+            try:
+                a.remove()
+            except Exception:
+                pass
+        self._grid_artists.clear()
+        for a in self._segment_artists:
+            try:
+                a.remove()
+            except Exception:
+                pass
+        self._segment_artists.clear()
+
+        # Grid (on top of spectrogram) with line count limiting
         if self._grid_manager.settings.visible:
             grid_positions = self._grid_manager.get_grid_positions(self._start_time, self._end_time)
             major_positions = self._grid_manager.get_major_grid_positions(self._start_time, self._end_time)
-
+            max_lines = 80
+            if len(grid_positions) > max_lines:
+                step = max(1, int(len(grid_positions) / max_lines))
+                grid_positions = grid_positions[::step]
+            if len(major_positions) > max_lines // 2:
+                step = max(1, int(len(major_positions) / (max_lines // 2)))
+                major_positions = major_positions[::step]
             for pos in grid_positions:
                 if pos not in major_positions:
-                    self._ax.axvline(pos, color=(0x3C / 255, 0x3C / 255, 0x3C / 255, 0.5), linestyle="--", linewidth=0.5, zorder=1)
-
+                    ln = self._ax.axvline(pos, color=(0x3C / 255, 0x3C / 255, 0x3C / 255, 0.5), linestyle="--", linewidth=0.5, zorder=1)
+                    self._grid_artists.append(ln)
             for pos in major_positions:
-                self._ax.axvline(pos, color=(0x45 / 255, 0x45 / 255, 0x45 / 255, 0.8), linestyle="-", linewidth=1, zorder=1)
+                ln = self._ax.axvline(pos, color=(0x45 / 255, 0x45 / 255, 0x45 / 255, 0.8), linestyle="-", linewidth=1, zorder=1)
+                self._grid_artists.append(ln)
 
-        # Draw segments
+        # Segments
         for i, seg in enumerate(self._segments):
             if seg.end < self._start_time or seg.start > self._end_time:
                 continue
-
-            # Get color based on detector
             color = self._get_segment_color(seg.detector)
             alpha = 0.3 if i == self._selected_index else 0.2
             edge_color = self._theme_colors["selection_border"].name() if i == self._selected_index else "white"
-
             seg_start = max(seg.start, self._start_time)
             seg_end = min(seg.end, self._end_time)
             seg_width = seg_end - seg_start
-
-            # Draw rectangle (on top of grid and spectrogram)
-            self._ax.axvspan(seg_start, seg_end, alpha=alpha, color=color, edgecolor=edge_color, linewidth=2, zorder=2)
-
-            # Draw label
+            is_enabled = True
+            try:
+                is_enabled = seg.attrs.get("enabled", True)
+            except Exception:
+                is_enabled = True
+            if not is_enabled and not self._show_disabled:
+                continue
+            draw_alpha = alpha if is_enabled else 0.1
+            span = self._ax.axvspan(seg_start, seg_end, alpha=draw_alpha, color=color, edgecolor=edge_color, linewidth=2, zorder=2)
+            self._segment_artists.append(span)
+            if not is_enabled and self._show_disabled:
+                ylim = self._ax.get_ylim()
+                x0, x1 = seg_start, seg_end
+                y0, y1 = ylim[0], ylim[1]
+                ln1, = self._ax.plot([x0, x1], [y0, y1], color="#FF6666", linewidth=1.5, zorder=3)
+                ln2, = self._ax.plot([x0, x1], [y1, y0], color="#FF6666", linewidth=1.5, zorder=3)
+                self._segment_artists.extend([ln1, ln2])
             label_x = seg_start + seg_width / 2
-            self._ax.text(label_x, self._ax.get_ylim()[1] * 0.95, str(i), color="white", ha="center", va="top", fontsize=8)
+            txt = self._ax.text(label_x, self._ax.get_ylim()[1] * 0.95, str(i), color="white", ha="center", va="top", fontsize=8)
+            self._segment_artists.append(txt)
 
-        # Draw preview rectangle for sample creation
+        # Preview rectangle for sample creation
         if self._creating_sample and self._pending_create_start is not None and self._pending_create_end is not None:
             preview_start = max(self._pending_create_start, self._start_time)
             preview_end = min(self._pending_create_end, self._end_time)
             if preview_end > preview_start:
-                # Draw preview rectangle with dashed border and lower opacity
                 from matplotlib.patches import Rectangle
                 ylim = self._ax.get_ylim()
                 rect = Rectangle(
@@ -368,15 +416,135 @@ class SpectrogramWidget(QWidget):
                     zorder=2
                 )
                 self._ax.add_patch(rect)
+                self._segment_artists.append(rect)
 
-        # Set axis limits
+        # Axis limits
         self._ax.set_xlim(self._start_time, self._end_time)
         if self._tiler.fmin is not None and self._tiler.fmax is not None:
             self._ax.set_ylim(self._tiler.fmin, self._tiler.fmax)
         else:
-            self._ax.set_ylim(0, 20000)  # Default 0-20kHz
+            self._ax.set_ylim(0, 20000)
 
-        self._canvas.draw()
+    def _apply_tile_to_image(self, tile) -> None:
+        """Apply a spectrogram tile to the persistent image, creating it if needed."""
+        try:
+            freq = tile.frequencies
+            if len(freq) == 0:
+                return
+            freq_min = freq[0]
+            freq_max = freq[-1]
+            extent = [tile.start_time, tile.end_time, freq_min, freq_max]
+            # Prefer precolored RGBA if present
+            if getattr(tile, "rgba", None) is not None and tile.rgba.size > 0:
+                rgba = tile.rgba  # shape: (freq, time, 4)
+                if self._im is None:
+                    self._im = self._ax.imshow(
+                        rgba,
+                        aspect="auto",
+                        origin="lower",
+                        extent=extent,
+                        interpolation="bilinear",
+                        zorder=0,
+                    )
+                else:
+                    self._im.set_data(rgba)
+                    self._im.set_extent(extent)
+            else:
+                # Fallback to per-frame normalization (slower)
+                spec = tile.spectrogram
+                if spec.shape[0] == 0 or spec.shape[1] == 0:
+                    return
+                spec_min = np.nanmin(spec)
+                spec_max = np.nanmax(spec)
+                spec_normalized = np.zeros_like(spec) if spec_max <= spec_min else (spec - spec_min) / (spec_max - spec_min)
+                if self._im is None:
+                    self._im = self._ax.imshow(
+                        spec_normalized,
+                        aspect="auto",
+                        origin="lower",
+                        extent=extent,
+                        cmap="viridis",
+                        interpolation="bilinear",
+                        vmin=0.0,
+                        vmax=1.0,
+                        zorder=0,
+                    )
+                else:
+                    self._im.set_data(spec_normalized)
+                    self._im.set_extent(extent)
+        except Exception:
+            pass
+
+    def _apply_overview_to_image(self) -> None:
+        """Extract the current view window from the overview tile and display it."""
+        if self._overview_tile is None or self._overview_tile.spectrogram.size == 0:
+            return
+        try:
+            tile = self._overview_tile
+            freq = tile.frequencies
+            if len(freq) == 0:
+                return
+            freq_min = freq[0]
+            freq_max = freq[-1]
+            # Calculate time indices for current view
+            if tile.end_time <= tile.start_time or self._duration <= 0:
+                return
+            time_ratio_start = (self._start_time - tile.start_time) / (tile.end_time - tile.start_time)
+            time_ratio_end = (self._end_time - tile.start_time) / (tile.end_time - tile.start_time)
+            time_ratio_start = max(0.0, min(1.0, time_ratio_start))
+            time_ratio_end = max(0.0, min(1.0, time_ratio_end))
+            # Extract time slice from overview (rgba is freq x time x 4)
+            if getattr(tile, "rgba", None) is not None and tile.rgba.size > 0:
+                rgba = tile.rgba
+                time_bins = rgba.shape[1]
+                t0 = int(time_ratio_start * time_bins)
+                t1 = int(time_ratio_end * time_bins)
+                t1 = max(t0 + 1, min(t1, time_bins))
+                rgba_crop = rgba[:, t0:t1, :]  # (freq, cropped_time, 4)
+                extent = [self._start_time, self._end_time, freq_min, freq_max]
+                if self._im is None:
+                    self._im = self._ax.imshow(
+                        rgba_crop,
+                        aspect="auto",
+                        origin="lower",
+                        extent=extent,
+                        interpolation="bilinear",
+                        zorder=0,
+                    )
+                else:
+                    self._im.set_data(rgba_crop)
+                    self._im.set_extent(extent)
+            else:
+                # Fallback: use raw spectrogram
+                spec = tile.spectrogram
+                if spec.shape[0] == 0 or spec.shape[1] == 0:
+                    return
+                time_bins = spec.shape[1]
+                t0 = int(time_ratio_start * time_bins)
+                t1 = int(time_ratio_end * time_bins)
+                t1 = max(t0 + 1, min(t1, time_bins))
+                spec_crop = spec[:, t0:t1]
+                spec_min = np.nanmin(spec_crop)
+                spec_max = np.nanmax(spec_crop)
+                spec_normalized = np.zeros_like(spec_crop) if spec_max <= spec_min else (spec_crop - spec_min) / (spec_max - spec_min)
+                extent = [self._start_time, self._end_time, freq_min, freq_max]
+                if self._im is None:
+                    self._im = self._ax.imshow(
+                        spec_normalized,
+                        aspect="auto",
+                        origin="lower",
+                        extent=extent,
+                        cmap="viridis",
+                        interpolation="bilinear",
+                        vmin=0.0,
+                        vmax=1.0,
+                        zorder=0,
+                    )
+                else:
+                    self._im.set_data(spec_normalized)
+                    self._im.set_extent(extent)
+        except Exception:
+            pass
 
     def _get_segment_color(self, detector: str) -> str:
         """Get color for detector type.
@@ -649,16 +817,32 @@ class SpectrogramWidget(QWidget):
                 self._update_display()
 
     def _on_wheel(self, event) -> None:
-        """Handle mouse wheel event for zooming."""
+        """Handle mouse wheel event for zooming/panning (ALT = pan)."""
         if event.inaxes != self._ax:
             return
 
-        if event.button == "up":
-            # Zoom in
-            self.set_zoom_level(self._zoom_level * 1.2)
-        elif event.button == "down":
-            # Zoom out
-            self.set_zoom_level(self._zoom_level / 1.2)
+        # Current view window
+        view_start = self._start_time
+        view_end = self._end_time
+        view_dur = max(1e-6, view_end - view_start)
+
+        # ALT handling is performed in eventFilter via native Qt wheel events
+
+        # Zoom centered on cursor position
+        if event.xdata is None:
+            return
+        cursor_time = max(view_start, min(float(event.xdata), view_end))
+        step = 1.2
+        is_zoom_in = (event.button == "up")
+        zoom = step if is_zoom_in else 1.0 / step
+        new_dur = max(0.5, min(self._duration, view_dur / zoom))
+        rel = (cursor_time - view_start) / view_dur
+        rel = max(0.0, min(1.0, rel))
+        new_start = cursor_time - rel * new_dur
+        new_start = max(0.0, min(new_start, max(0.0, self._duration - new_dur)))
+        self._start_time = new_start
+        self._end_time = new_start + new_dur
+        self._update_display()
 
     def eventFilter(self, obj, event) -> bool:
         """Event filter for double-click detection and ESC key cancellation.
@@ -671,6 +855,46 @@ class SpectrogramWidget(QWidget):
             True if event was handled, False otherwise.
         """
         if obj == self._canvas:
+            # Handle ALT + wheel panning with native Qt event for reliability
+            if event.type() == QEvent.Type.Wheel:
+                try:
+                    modifiers = event.modifiers()
+                    if modifiers & Qt.KeyboardModifier.AltModifier:
+                        view_start = self._start_time
+                        view_end = self._end_time
+                        view_dur = max(1e-6, view_end - view_start)
+
+                        dy = 0
+                        dx = 0
+                        try:
+                            ad = event.angleDelta()
+                            dy = int(getattr(ad, "y")()) if hasattr(ad, "y") else int(ad.y())
+                            dx = int(getattr(ad, "x")()) if hasattr(ad, "x") else int(ad.x())
+                        except Exception:
+                            pass
+                        if dy == 0 and dx == 0:
+                            try:
+                                pd = event.pixelDelta()
+                                dy = int(getattr(pd, "y")()) if hasattr(pd, "y") else int(pd.y())
+                                dx = int(getattr(pd, "x")()) if hasattr(pd, "x") else int(pd.x())
+                            except Exception:
+                                pass
+
+                        if dy != 0 or dx != 0:
+                            if dy != 0:
+                                direction = -1 if dy > 0 else 1  # wheel up = pan left
+                            else:
+                                direction = 1 if dx > 0 else -1  # right = pan right
+                            shift = 0.1 * view_dur * direction
+                            new_start = max(0.0, min(view_start + shift, max(0.0, self._duration - view_dur)))
+                            self._start_time = new_start
+                            self._end_time = new_start + view_dur
+                            self._update_display()
+                            event.accept()
+                            return True
+                except Exception:
+                    pass
+
             if event.type() == QEvent.Type.MouseButtonDblClick:
                 mouse_event = event
                 if mouse_event.button() == Qt.MouseButton.LeftButton:
@@ -743,6 +967,22 @@ class SpectrogramWidget(QWidget):
         
         menu.addSeparator()
         
+        # Disable options
+        disable_action = menu.addAction("Disable")
+        disable_action.triggered.connect(lambda: self.sample_disable_requested.emit(seg_index, True))
+        disable_others_action = menu.addAction("Disable Other Samples")
+        disable_others_action.triggered.connect(lambda: self.sample_disable_others_requested.emit(seg_index))
+
+        menu.addSeparator()
+
+        # Center options
+        center_action = menu.addAction("Center")
+        center_action.triggered.connect(lambda: self.sample_center_requested.emit(seg_index))
+        center_fill_action = menu.addAction("Center Fill")
+        center_fill_action.triggered.connect(lambda: self.sample_center_fill_requested.emit(seg_index))
+
+        menu.addSeparator()
+
         delete_action = menu.addAction("Delete Sample")
         delete_action.triggered.connect(lambda: self.sample_deleted.emit(seg_index))
         

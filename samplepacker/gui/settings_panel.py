@@ -25,7 +25,7 @@ class SettingsPanel(QWidget):
     """Settings panel widget."""
 
     settings_changed = Signal()  # Emitted when settings change
-    update_preview_requested = Signal()  # Emitted when update preview is requested
+    detect_samples_requested = Signal()  # Emitted when detection is requested
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize settings panel.
@@ -38,6 +38,9 @@ class SettingsPanel(QWidget):
         # Create settings
         self._settings = ProcessingSettings()
         self._grid_settings = GridSettings()
+        # Override defaults per plan
+        self._grid_settings.snap_interval_sec = 1.0
+        self._grid_settings.enabled = True
 
         # Create layout
         layout = QVBoxLayout()
@@ -105,6 +108,23 @@ class SettingsPanel(QWidget):
         self._threshold_spin.setDecimals(1)
         self._threshold_spin.valueChanged.connect(self._on_settings_changed)
         layout.addRow("Threshold:", self._threshold_spin)
+
+        # CPU workers for background processing
+        self._workers_spin = QSpinBox()
+        self._workers_spin.setRange(1, 64)
+        try:
+            import os
+            default_workers = max(1, (os.cpu_count() or 4) - 1)
+        except Exception:
+            default_workers = 3
+        # If settings already has max_workers, honor it
+        existing_workers = getattr(self._settings, "max_workers", None)
+        self._workers_spin.setValue(int(existing_workers or default_workers))
+        def _on_workers_changed(v: int) -> None:
+            setattr(self._settings, "max_workers", int(v))
+            self._on_settings_changed()
+        self._workers_spin.valueChanged.connect(_on_workers_changed)
+        layout.addRow("CPU workers:", self._workers_spin)
 
         group.setLayout(layout)
         return group
@@ -259,18 +279,13 @@ class SettingsPanel(QWidget):
         Returns:
             QGroupBox widget.
         """
-        group = QGroupBox("Update Controls")
+        group = QGroupBox("Detection")
         layout = QVBoxLayout()
 
-        # Update preview button
-        self._update_button = QPushButton("Update Preview")
-        self._update_button.clicked.connect(self._on_update_clicked)
-        layout.addWidget(self._update_button)
-
-        # Auto-update checkbox
-        self._auto_update_check = QCheckBox("Auto-update on change")
-        self._auto_update_check.setChecked(False)
-        layout.addWidget(self._auto_update_check)
+        # Detect samples button
+        self._detect_button = QPushButton("Detect Samples")
+        self._detect_button.clicked.connect(self._on_detect_clicked)
+        layout.addWidget(self._detect_button)
 
         group.setLayout(layout)
         return group
@@ -319,8 +334,6 @@ class SettingsPanel(QWidget):
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
         self.settings_changed.emit()
-        if self._auto_update_check.isChecked():
-            self.update_preview_requested.emit()
 
     def _on_pre_pad_changed(self, value: int) -> None:
         """Handle pre-padding change."""
@@ -418,9 +431,9 @@ class SettingsPanel(QWidget):
         self._grid_settings.enabled = checked
         self.settings_changed.emit()
 
-    def _on_update_clicked(self) -> None:
-        """Handle update button click."""
-        self.update_preview_requested.emit()
+    def _on_detect_clicked(self) -> None:
+        """Handle detect button click."""
+        self.detect_samples_requested.emit()
 
     def get_settings(self) -> ProcessingSettings:
         """Get processing settings.

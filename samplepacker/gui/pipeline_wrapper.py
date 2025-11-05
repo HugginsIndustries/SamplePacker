@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ProcessPoolExecutor, Future
 
 from samplepacker.detectors.base import Segment
 from samplepacker.pipeline import ProcessingSettings, process_file
@@ -23,6 +24,7 @@ class PipelineWrapper:
         self.current_audio_path: Path | None = None
         self.current_audio_info: dict[str, Any] | None = None
         self.current_segments: list[Segment] = []
+        self._proc_executor: ProcessPoolExecutor | None = None
 
     def load_audio(self, audio_path: Path) -> dict[str, Any]:
         """Load audio file and get metadata.
@@ -44,8 +46,8 @@ class PipelineWrapper:
             logger.error(f"Failed to load audio: {e}")
             raise
 
-    def process_preview(self, output_dir: Path | None = None) -> dict[str, Any]:
-        """Process audio for preview (dry-run mode).
+    def detect_samples(self, output_dir: Path | None = None) -> dict[str, Any]:
+        """Run sample detection (dry-run mode for GUI).
 
         Args:
             output_dir: Optional output directory for temporary files.
@@ -78,11 +80,65 @@ class PipelineWrapper:
             )
 
             self.current_segments = result.get("segments", [])
-            logger.info(f"Processed preview: {len(self.current_segments)} segments found")
+            logger.info(f"Detection complete: {len(self.current_segments)} segments found")
             return result
         except Exception as e:
-            logger.error(f"Failed to process preview: {e}")
+            logger.error(f"Failed to detect samples: {e}")
             raise
+
+    def detect_samples_async(self, output_dir: Path | None = None, callback: Any | None = None) -> Future:
+        """Run sample detection in a background process and return a Future.
+
+        Args:
+            output_dir: Optional output directory for temporary files.
+            callback: Optional function(result_dict) called on completion.
+        """
+        if not self.current_audio_path:
+            raise ValueError("No audio file loaded")
+
+        # Create temporary output directory if not provided
+        if output_dir is None:
+            import tempfile
+            output_dir = Path(tempfile.mkdtemp(prefix="samplepacker_preview_"))
+
+        # Prepare settings (dry run for GUI)
+        preview_settings = ProcessingSettings(**self.settings.__dict__)
+        preview_settings.dry_run = True
+        preview_settings.spectrogram = True
+        preview_settings.save_temp = True
+
+        # Lazy init executor with user-configurable workers if present
+        if self._proc_executor is None:
+            try:
+                import os
+                max_workers = getattr(self.settings, "max_workers", None)
+                if not isinstance(max_workers, int) or max_workers <= 0:
+                    max_workers = max(1, (os.cpu_count() or 4) - 1)
+                self._proc_executor = ProcessPoolExecutor(max_workers=max_workers)
+            except Exception:
+                self._proc_executor = ProcessPoolExecutor()
+
+        def task(inp: Path, outd: Path, st: ProcessingSettings) -> dict[str, Any]:
+            # Separate process: call process_file
+            return process_file(inp, outd, st, cache=None)
+
+        fut = self._proc_executor.submit(task, self.current_audio_path, output_dir, preview_settings)
+
+        def _done(f: Future) -> None:
+            try:
+                result = f.result()
+                self.current_segments = result.get("segments", [])
+                logger.info(f"Detection complete: {len(self.current_segments)} segments found")
+                if callback:
+                    try:
+                        callback(result)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Async detection failed: {e}")
+
+        fut.add_done_callback(_done)
+        return fut
 
     def export_samples(self, output_dir: Path, selected_indices: list[int] | None = None) -> int:
         """Export selected samples.

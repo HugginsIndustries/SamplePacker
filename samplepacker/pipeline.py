@@ -23,12 +23,12 @@ class ProcessingSettings:
         self.threshold: Any = kwargs.get("threshold", "auto")
 
         # Timing (milliseconds)
-        self.pre_pad_ms: float = kwargs.get("pre_pad_ms", 10000.0)
-        self.post_pad_ms: float = kwargs.get("post_pad_ms", 10000.0)
+        self.pre_pad_ms: float = kwargs.get("pre_pad_ms", 1000.0)
+        self.post_pad_ms: float = kwargs.get("post_pad_ms", 1000.0)
         self.merge_gap_ms: float = kwargs.get("merge_gap_ms", 300.0)
         self.min_dur_ms: float = kwargs.get("min_dur_ms", 400.0)
         self.max_dur_ms: float = kwargs.get("max_dur_ms", 60000.0)
-        self.min_gap_ms: float = kwargs.get("min_gap_ms", 0.0)
+        self.min_gap_ms: float = kwargs.get("min_gap_ms", 1000.0)
         # Disable chain-merge after padding by default
         self.no_merge_after_padding: bool = kwargs.get("no_merge_after_padding", True)
 

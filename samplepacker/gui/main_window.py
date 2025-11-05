@@ -32,7 +32,7 @@ from samplepacker.detectors.base import Segment
 from samplepacker.gui.grid_manager import GridManager
 from samplepacker.gui.navigator_scrollbar import NavigatorScrollbar
 from samplepacker.gui.pipeline_wrapper import PipelineWrapper
-from samplepacker.gui.preview_manager import PreviewManager
+from samplepacker.gui.detection_manager import DetectionManager
 from samplepacker.gui.sample_player import SamplePlayerWidget
 from samplepacker.gui.settings_panel import SettingsPanel
 from samplepacker.gui.spectrogram_tiler import SpectrogramTiler
@@ -79,11 +79,11 @@ class MainWindow(QMainWindow):
         self._redo_stack: list[list[Segment]] = []
         self._max_undo_stack_size = 50
 
-        # Preview manager
-        self._preview_manager = PreviewManager(self)
-        self._preview_manager.progress.connect(self._on_preview_progress)
-        self._preview_manager.finished.connect(self._on_preview_finished)
-        self._preview_manager.error.connect(self._on_preview_error)
+        # Detection manager
+        self._detection_manager = DetectionManager(self)
+        self._detection_manager.progress.connect(self._on_detection_progress)
+        self._detection_manager.finished.connect(self._on_detection_finished)
+        self._detection_manager.error.connect(self._on_detection_error)
 
         # Spectrogram tiler
         self._tiler = SpectrogramTiler()
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
         # Settings panel (left)
         self._settings_panel = SettingsPanel()
         self._settings_panel.settings_changed.connect(self._on_settings_changed)
-        self._settings_panel.update_preview_requested.connect(self._on_update_preview)
+        self._settings_panel.detect_samples_requested.connect(self._on_detect_samples)
         splitter.addWidget(self._settings_panel)
         splitter.setStretchFactor(0, 0)
 
@@ -152,6 +152,11 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.sample_deleted.connect(self._on_sample_deleted)
         self._spectrogram_widget.sample_play_requested.connect(self._on_sample_play_requested)
         self._spectrogram_widget.time_clicked.connect(self._on_time_clicked)
+        # New signals for context actions
+        self._spectrogram_widget.sample_disable_requested.connect(lambda idx, dis: self._on_disable_sample(idx, dis))
+        self._spectrogram_widget.sample_disable_others_requested.connect(self._on_disable_other_samples)
+        self._spectrogram_widget.sample_center_requested.connect(self._on_center_clicked)
+        self._spectrogram_widget.sample_center_fill_requested.connect(self._on_fill_clicked)
 
         # Vertical splitter for player and spectrogram (resizable)
         self._player_spectro_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -187,15 +192,16 @@ class MainWindow(QMainWindow):
 
         # Sample list (bottom) - samples as columns, fields as rows
         self._sample_table = QTableWidget()
-        self._sample_table.setRowCount(7)  # Checkbox, Start, End, Duration, Detector, Play, Delete
-        self._sample_table.setVerticalHeaderLabels(["", "Start", "End", "Duration", "Detector", "Play", "Delete"])
+        # Rows: Enable, Center, Start, End, Duration, Detector, Play, Delete
+        self._sample_table.setRowCount(8)
+        self._sample_table.setVerticalHeaderLabels(["Enable", "Center", "Start", "End", "Duration", "Detector", "Play", "Delete"])
         self._sample_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectColumns)
         self._sample_table.itemChanged.connect(self._on_sample_table_changed)
         self._sample_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._sample_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # Calculate height to fit all 7 rows: header + (7 rows * row height)
+        # Calculate height to fit all 8 rows: header + (8 rows * row height)
         # Typical row height is ~30px, header is ~30px
-        table_height = self._sample_table.horizontalHeader().height() + (7 * 30) + 10
+        table_height = self._sample_table.horizontalHeader().height() + (8 * 30) + 10
         self._sample_table.setMinimumHeight(table_height)
 
         # Main vertical splitter for editor/sample table
@@ -264,6 +270,43 @@ class MainWindow(QMainWindow):
         self._redo_action.triggered.connect(self._redo)
         edit_menu.addAction(self._redo_action)
 
+        edit_menu.addSeparator()
+
+        # Detect Samples action
+        detect_action = QAction("&Detect Samples", self)
+        detect_action.setShortcut(QKeySequence("Ctrl+D"))
+        detect_action.triggered.connect(self._on_detect_samples)
+        edit_menu.addAction(detect_action)
+
+        # Auto Sample Order (default ON)
+        self._auto_order_action = QAction("&Auto Sample Order", self)
+        self._auto_order_action.setCheckable(True)
+        self._auto_order_action.setChecked(True)
+        self._auto_order_action.toggled.connect(self._on_toggle_auto_order)
+        edit_menu.addAction(self._auto_order_action)
+
+        # Re-order Samples (disabled when auto-order ON)
+        self._reorder_action = QAction("&Re-order Samples", self)
+        self._reorder_action.setEnabled(False)
+        self._reorder_action.triggered.connect(self._on_reorder_samples)
+        edit_menu.addAction(self._reorder_action)
+
+        # Delete All Samples
+        delete_all_action = QAction("&Delete All Samples", self)
+        delete_all_action.triggered.connect(self._on_delete_all_samples)
+        edit_menu.addAction(delete_all_action)
+
+        # Disable All Samples
+        disable_all_action = QAction("&Disable All Samples", self)
+        disable_all_action.triggered.connect(self._on_disable_all_samples)
+        edit_menu.addAction(disable_all_action)
+
+        # Show Disabled Samples (toggle, default true)
+        self._show_disabled_action = QAction("Show &Disabled Samples", self)
+        self._show_disabled_action.setCheckable(True)
+        self._show_disabled_action.setChecked(True)
+        self._show_disabled_action.toggled.connect(self._on_toggle_show_disabled)
+
         # View menu
         view_menu = menubar.addMenu("&View")
         zoom_in_action = QAction("Zoom &In", self)
@@ -298,8 +341,19 @@ class MainWindow(QMainWindow):
         self._hide_player_action.triggered.connect(self._on_toggle_player)
         view_menu.addAction(self._hide_player_action)
 
+        # Show Disabled Samples toggle moved from Edit to View
+        view_menu.addAction(self._show_disabled_action)
+
         # Help menu
         help_menu = menubar.addMenu("&Help")
+
+        # Verbose Log toggle (default ON)
+        self._verbose_log_action = QAction("Verbose &Log", self)
+        self._verbose_log_action.setCheckable(True)
+        self._verbose_log_action.setChecked(True)
+        self._verbose_log_action.toggled.connect(self._on_toggle_verbose_log)
+        help_menu.addAction(self._verbose_log_action)
+
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
@@ -359,7 +413,7 @@ class MainWindow(QMainWindow):
             # Create pipeline wrapper
             settings = self._settings_panel.get_settings()
             self._pipeline_wrapper = PipelineWrapper(settings)
-            self._preview_manager.set_pipeline_wrapper(self._pipeline_wrapper)
+            self._detection_manager.set_pipeline_wrapper(self._pipeline_wrapper)
 
             # Load audio
             audio_info = self._pipeline_wrapper.load_audio(file_path)
@@ -374,9 +428,13 @@ class MainWindow(QMainWindow):
             self._spectrogram_widget.set_time_range(0.0, min(60.0, duration))
             self._navigator.set_view_range(0.0, min(60.0, duration))
 
-            # Generate overview for navigator
+            # Generate overview for navigator and main spectrogram fallback
             overview = self._tiler.generate_overview(file_path, duration)
             self._navigator.set_overview_tile(overview)
+            try:
+                self._spectrogram_widget.set_overview_tile(overview)
+            except Exception:
+                pass
 
             # Update frequency range
             fmin = settings.hp
@@ -389,77 +447,90 @@ class MainWindow(QMainWindow):
             self._status_label.setText(f"Loaded: {file_path.name}")
             logger.info(f"Loaded audio file: {file_path}")
             
-            # Auto-generate preview
-            self._preview_manager.start_preview()
+            # Clear any existing segments and UI until detection is requested
+            if self._pipeline_wrapper:
+                self._pipeline_wrapper.current_segments = []
+            self._spectrogram_widget.set_segments([])
+            self._update_sample_table([])
+            self._update_navigator_markers()
+
+            # Ensure main spectrogram is visible immediately on load
+            try:
+                self._spectrogram_widget.preload_current_view()
+            except Exception:
+                pass
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load audio file:\n{str(e)}")
             logger.error(f"Failed to load audio file: {e}")
 
-    def _on_update_preview(self) -> None:
-        """Handle update preview request."""
+    def _on_detect_samples(self) -> None:
+        """Handle Detect Samples request."""
         if not self._current_audio_path:
             QMessageBox.warning(self, "No File", "Please open an audio file first.")
             return
 
-        if self._preview_manager.is_processing():
-            QMessageBox.warning(self, "Processing", "Preview processing is already in progress.")
+        if self._detection_manager.is_processing():
+            QMessageBox.warning(self, "Processing", "Detection is already in progress.")
             return
 
         # Update pipeline wrapper settings
         if self._pipeline_wrapper:
             self._pipeline_wrapper.settings = self._settings_panel.get_settings()
 
-        # Start preview processing
+        # Start detection processing
         self._progress_bar.setVisible(True)
         self._progress_bar.setRange(0, 0)  # Indeterminate
-        self._status_label.setText("Processing preview...")
-        self._preview_manager.start_preview()
+        self._status_label.setText("Detecting samples...")
+        self._detection_manager.start_detection()
 
-    def _on_preview_progress(self, message: str) -> None:
-        """Handle preview progress.
+    def _on_detection_progress(self, message: str) -> None:
+        """Handle detection progress.
 
         Args:
             message: Progress message.
         """
         self._status_label.setText(message)
 
-    def _on_preview_finished(self, result: dict[str, Any]) -> None:
-        """Handle preview finished.
+    def _on_detection_finished(self, result: dict[str, Any]) -> None:
+        """Handle detection finished.
 
         Args:
             result: Processing results.
         """
         self._progress_bar.setVisible(False)
-        self._status_label.setText("Preview complete")
+        self._status_label.setText("Detection complete")
 
         # Update segments
         segments = result.get("segments", [])
-        self._spectrogram_widget.set_segments(segments)
+        # Ensure enabled flag defaults to True
+        for s in segments:
+            if not hasattr(s, "attrs") or s.attrs is None:
+                s.attrs = {}
+            s.attrs.setdefault("enabled", True)
+        if self._pipeline_wrapper:
+            self._pipeline_wrapper.current_segments = segments
+        self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(segments)
         
         # Don't update player widget - player should only show info for currently playing sample
 
-        # Update navigator with sample markers
-        markers = []
-        for seg in segments:
-            color = self._get_segment_color(seg.detector)
-            markers.append((seg.start, seg.end, color))
-        self._navigator.set_sample_markers(markers)
+        # Update navigator with sample markers (enabled only)
+        self._update_navigator_markers()
         
         # Push initial undo state so users can undo back to original detected segments
         if self._pipeline_wrapper:
             self._push_undo_state()
 
-    def _on_preview_error(self, error: str) -> None:
-        """Handle preview error.
+    def _on_detection_error(self, error: str) -> None:
+        """Handle detection error.
 
         Args:
             error: Error message.
         """
         self._progress_bar.setVisible(False)
         self._status_label.setText(f"Error: {error}")
-        QMessageBox.critical(self, "Preview Error", f"Failed to process preview:\n{error}")
+        QMessageBox.critical(self, "Detection Error", f"Failed to detect samples:\n{error}")
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
@@ -504,6 +575,8 @@ class MainWindow(QMainWindow):
             seg.start = start
             seg.end = end
             self._update_sample_table(self._pipeline_wrapper.current_segments)
+            self._maybe_auto_reorder()
+            self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
             
             # Update player widget if this is the currently playing sample
@@ -557,6 +630,8 @@ class MainWindow(QMainWindow):
             seg.start = start
             seg.end = end
             self._update_sample_table(self._pipeline_wrapper.current_segments)
+            self._maybe_auto_reorder()
+            self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
             
             # Update player widget if this is the currently playing sample
@@ -607,8 +682,11 @@ class MainWindow(QMainWindow):
         # Create new segment
         seg = Segment(start=start, end=end, detector="manual", score=1.0)
         if self._pipeline_wrapper:
+            # Default enabled
+            seg.attrs["enabled"] = True
             self._pipeline_wrapper.current_segments.append(seg)
-            self._spectrogram_widget.set_segments(self._pipeline_wrapper.current_segments)
+            self._maybe_auto_reorder()
+            self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_sample_table(self._pipeline_wrapper.current_segments)
             self._update_navigator_markers()
 
@@ -622,7 +700,8 @@ class MainWindow(QMainWindow):
             # Push undo state before deleting
             self._push_undo_state()
             del self._pipeline_wrapper.current_segments[index]
-            self._spectrogram_widget.set_segments(self._pipeline_wrapper.current_segments)
+            self._maybe_auto_reorder()
+            self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_sample_table(self._pipeline_wrapper.current_segments)
             self._update_navigator_markers()
 
@@ -630,10 +709,17 @@ class MainWindow(QMainWindow):
         """Update navigator markers from current segments."""
         if not self._pipeline_wrapper:
             return
+        show_disabled = getattr(self, "_show_disabled_action", None) is None or self._show_disabled_action.isChecked()
         markers = []
         for seg in self._pipeline_wrapper.current_segments:
-            color = self._get_segment_color(seg.detector)
-            markers.append((seg.start, seg.end, color))
+            enabled = seg.attrs.get("enabled", True)
+            if enabled:
+                color = self._get_segment_color(seg.detector)
+                markers.append((seg.start, seg.end, color))
+            elif show_disabled:
+                # Dim gray for disabled markers
+                from PySide6.QtGui import QColor
+                markers.append((seg.start, seg.end, QColor(120, 120, 120, 160)))
         self._navigator.set_sample_markers(markers)
 
     def _on_sample_play_requested(self, index: int) -> None:
@@ -907,8 +993,24 @@ class MainWindow(QMainWindow):
         Args:
             item: Changed item.
         """
-        # Handle checkbox changes for export selection
-        pass
+        # Handle changes only for the Enable row (row 0)
+        try:
+            row = item.row()
+            col = item.column()
+        except Exception:
+            return
+        if row != 0 or not self._pipeline_wrapper:
+            return
+        segments = self._pipeline_wrapper.current_segments
+        if 0 <= col < len(segments):
+            seg = segments[col]
+            enabled = item.checkState() == Qt.CheckState.Checked
+            if not hasattr(seg, "attrs") or seg.attrs is None:
+                seg.attrs = {}
+            seg.attrs["enabled"] = enabled
+            # Refresh views using enabled filter
+            self._spectrogram_widget.set_segments(self._get_display_segments())
+            self._update_navigator_markers()
 
     def _on_play_button_clicked(self, index: int) -> None:
         """Handle play button click.
@@ -926,6 +1028,44 @@ class MainWindow(QMainWindow):
         """
         self._on_sample_deleted(index)
 
+    def _on_center_clicked(self, index: int) -> None:
+        """Center the selected sample in the main editor without changing zoom."""
+        if not self._pipeline_wrapper:
+            return
+        segments = self._pipeline_wrapper.current_segments
+        if not (0 <= index < len(segments)):
+            return
+        seg = segments[index]
+        center = (seg.start + seg.end) / 2.0
+        # Maintain current view duration
+        view_duration = max(0.01, self._spectrogram_widget._end_time - self._spectrogram_widget._start_time)
+        total = max(0.0, self._spectrogram_widget._duration)
+        new_start = max(0.0, min(center - (view_duration / 2.0), max(0.0, total - view_duration)))
+        new_end = new_start + view_duration
+        self._spectrogram_widget.set_time_range(new_start, new_end)
+        self._navigator.set_view_range(new_start, new_end)
+
+    def _on_fill_clicked(self, index: int) -> None:
+        """Zoom so the sample fills the editor with a small margin, then center."""
+        if not self._pipeline_wrapper:
+            return
+        segments = self._pipeline_wrapper.current_segments
+        if not (0 <= index < len(segments)):
+            return
+        seg = segments[index]
+        seg_dur = max(0.01, seg.end - seg.start)
+        # Margin is 5% of duration, clamped to [0.05s, 1.0s]
+        margin = max(0.05, min(1.0, seg_dur * 0.05))
+        desired_start = max(0.0, seg.start - margin)
+        desired_end = seg.end + margin
+        total = max(0.0, self._spectrogram_widget._duration)
+        desired_end = min(desired_end, total)
+        # Ensure non-empty
+        if desired_end <= desired_start:
+            desired_end = min(total, desired_start + seg_dur + 2 * margin)
+        self._spectrogram_widget.set_time_range(desired_start, desired_end)
+        self._navigator.set_view_range(desired_start, desired_end)
+
     def _update_sample_table(self, segments: list[Segment]) -> None:
         """Update sample table.
 
@@ -939,41 +1079,62 @@ class MainWindow(QMainWindow):
         self._sample_table.setHorizontalHeaderLabels(column_headers)
 
         for i, seg in enumerate(segments):
-            # Checkbox (row 0)
+            # Ensure enabled flag exists (default True)
+            if not hasattr(seg, "attrs") or seg.attrs is None:
+                seg.attrs = {}
+            if "enabled" not in seg.attrs:
+                seg.attrs["enabled"] = True
+
+            # Enable checkbox (row 0)
             checkbox = QTableWidgetItem()
-            checkbox.setCheckState(Qt.CheckState.Checked)
+            checkbox.setCheckState(Qt.CheckState.Checked if seg.attrs.get("enabled", True) else Qt.CheckState.Unchecked)
             checkbox.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._sample_table.setItem(0, i, checkbox)
 
-            # Start (row 1)
+            # Center/Fill composite cell (row 1)
+            from PySide6.QtWidgets import QWidget as _QW, QHBoxLayout as _QHBox
+            cell = _QW()
+            layout = _QHBox()
+            layout.setContentsMargins(2, 2, 2, 2)
+            layout.setSpacing(6)
+            center_button = QPushButton("Center")
+            center_button.clicked.connect(lambda checked, idx=i: self._on_center_clicked(idx))
+            fill_button = QPushButton("Fill")
+            fill_button.clicked.connect(lambda checked, idx=i: self._on_fill_clicked(idx))
+            layout.addWidget(center_button)
+            layout.addWidget(fill_button)
+            cell.setLayout(layout)
+            self._sample_table.setCellWidget(1, i, cell)
+
+            # Start (row 2)
             start_item = QTableWidgetItem(f"{seg.start:.3f}")
             start_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._sample_table.setItem(1, i, start_item)
+            self._sample_table.setItem(2, i, start_item)
 
-            # End (row 2)
+            # End (row 3)
             end_item = QTableWidgetItem(f"{seg.end:.3f}")
             end_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._sample_table.setItem(2, i, end_item)
+            self._sample_table.setItem(3, i, end_item)
 
-            # Duration (row 3)
+            # Duration (row 4)
             duration_item = QTableWidgetItem(f"{seg.duration():.3f}")
             duration_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._sample_table.setItem(3, i, duration_item)
+            self._sample_table.setItem(4, i, duration_item)
 
-            # Detector (row 4)
+            # Detector (row 5)
             detector_item = QTableWidgetItem(seg.detector)
             detector_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._sample_table.setItem(4, i, detector_item)
+            self._sample_table.setItem(5, i, detector_item)
 
-            # Play button (row 5)
+            # Play button (row 6)
             play_button = QPushButton("▶")
             play_button.clicked.connect(lambda checked, idx=i: self._on_play_button_clicked(idx))
-            self._sample_table.setCellWidget(5, i, play_button)
+            self._sample_table.setCellWidget(6, i, play_button)
 
-            # Delete button (row 6)
+            # Delete button (row 7)
             delete_button = QPushButton("×")
             delete_button.clicked.connect(lambda checked, idx=i: self._on_delete_button_clicked(idx))
-            self._sample_table.setCellWidget(6, i, delete_button)
+            self._sample_table.setCellWidget(7, i, delete_button)
 
         # Auto-resize columns to fit content
         self._sample_table.resizeColumnsToContents()
@@ -1019,6 +1180,37 @@ class MainWindow(QMainWindow):
             self._player_spectro_splitter.setSizes([0, sizes[1]])
             self._hide_player_action.setChecked(True)
 
+    def _on_delete_all_samples(self) -> None:
+        """Delete all samples."""
+        if not self._pipeline_wrapper:
+            return
+        self._push_undo_state()
+        self._pipeline_wrapper.current_segments.clear()
+        self._spectrogram_widget.set_segments([])
+        self._update_sample_table([])
+        self._update_navigator_markers()
+
+    def _on_reorder_samples(self) -> None:
+        """Manually reorder samples chronologically."""
+        if not self._pipeline_wrapper:
+            return
+        self._pipeline_wrapper.current_segments.sort(key=lambda s: s.start)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
+        self._update_sample_table(self._pipeline_wrapper.current_segments)
+        self._update_navigator_markers()
+
+    def _on_toggle_auto_order(self, enabled: bool) -> None:
+        """Toggle Auto Sample Order and update dependent UI state."""
+        # Disable manual reorder when auto is enabled
+        if hasattr(self, "_reorder_action"):
+            self._reorder_action.setEnabled(not enabled)
+        # If enabling auto-order, immediately enforce ordering
+        if enabled and self._pipeline_wrapper:
+            self._pipeline_wrapper.current_segments.sort(key=lambda s: s.start)
+            self._spectrogram_widget.set_segments(self._get_display_segments())
+            self._update_sample_table(self._pipeline_wrapper.current_segments)
+            self._update_navigator_markers()
+
     def _on_info_splitter_moved(self, pos: int, index: int) -> None:
         """Handle info table splitter moved (manual resize).
         
@@ -1044,6 +1236,57 @@ class MainWindow(QMainWindow):
         self._hide_player_action.setChecked(sizes[0] == 0)
         if sizes[0] > 0:
             self._player_initial_size = sizes[0]  # Update stored size
+
+    def _on_disable_all_samples(self) -> None:
+        """Disable all samples (set enabled=False)."""
+        if not self._pipeline_wrapper:
+            return
+        for s in self._pipeline_wrapper.current_segments:
+            if not hasattr(s, "attrs") or s.attrs is None:
+                s.attrs = {}
+            s.attrs["enabled"] = False
+        self._update_sample_table(self._pipeline_wrapper.current_segments)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
+        self._update_navigator_markers()
+
+    def _on_toggle_show_disabled(self, show: bool) -> None:
+        """Toggle visibility of disabled samples in views."""
+        self._spectrogram_widget.set_show_disabled(show)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
+        self._update_navigator_markers()
+
+    def _on_disable_sample(self, index: int, disabled: bool) -> None:
+        """Disable/enable single sample from context menu."""
+        if not self._pipeline_wrapper:
+            return
+        if 0 <= index < len(self._pipeline_wrapper.current_segments):
+            seg = self._pipeline_wrapper.current_segments[index]
+            if not hasattr(seg, "attrs") or seg.attrs is None:
+                seg.attrs = {}
+            seg.attrs["enabled"] = not (not disabled) if False else (not disabled)  # keep explicit assignment
+            seg.attrs["enabled"] = (not disabled) is False and False or (not disabled)  # overwrite to ensure bool
+            seg.attrs["enabled"] = (False if disabled else True)
+            # Sync table checkbox
+            item = self._sample_table.item(0, index)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked if seg.attrs["enabled"] else Qt.CheckState.Unchecked)
+            self._spectrogram_widget.set_segments(self._get_display_segments())
+            self._update_navigator_markers()
+
+    def _on_disable_other_samples(self, index: int) -> None:
+        """Disable all samples except the given index."""
+        if not self._pipeline_wrapper:
+            return
+        for i, s in enumerate(self._pipeline_wrapper.current_segments):
+            if not hasattr(s, "attrs") or s.attrs is None:
+                s.attrs = {}
+            s.attrs["enabled"] = (i == index)
+            # Sync table checkbox
+            item = self._sample_table.item(0, i)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked if s.attrs["enabled"] else Qt.CheckState.Unchecked)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
+        self._update_navigator_markers()
 
     def _on_export_samples(self) -> None:
         """Handle export samples action."""
@@ -1082,6 +1325,19 @@ class MainWindow(QMainWindow):
             "SamplePacker GUI\n\nTurn long field recordings into usable sample packs.",
         )
 
+    def _on_toggle_verbose_log(self, enabled: bool) -> None:
+        """Toggle verbose logging level between DEBUG and INFO."""
+        try:
+            import logging
+            root_logger = logging.getLogger()
+            root_logger.setLevel(logging.DEBUG if enabled else logging.INFO)
+            for handler in root_logger.handlers:
+                handler.setLevel(logging.DEBUG if enabled else logging.INFO)
+            if hasattr(self, "_status_label"):
+                self._status_label.setText("Verbose Log: ON" if enabled else "Verbose Log: OFF")
+        except Exception as e:
+            logger.error(f"Failed to toggle verbose log: {e}")
+
     def _push_undo_state(self) -> None:
         """Push current segments state to undo stack."""
         if not self._pipeline_wrapper:
@@ -1117,7 +1373,7 @@ class MainWindow(QMainWindow):
         self._pipeline_wrapper.current_segments = copy.deepcopy(previous_segments)
         
         # Update UI
-        self._spectrogram_widget.set_segments(self._pipeline_wrapper.current_segments)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(self._pipeline_wrapper.current_segments)
         self._update_navigator_markers()
         
@@ -1142,7 +1398,7 @@ class MainWindow(QMainWindow):
         self._pipeline_wrapper.current_segments = copy.deepcopy(next_segments)
         
         # Update UI
-        self._spectrogram_widget.set_segments(self._pipeline_wrapper.current_segments)
+        self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(self._pipeline_wrapper.current_segments)
         self._update_navigator_markers()
         
@@ -1192,4 +1448,38 @@ class MainWindow(QMainWindow):
             "spectral_interestingness": QColor(0x66, 0xAA, 0xFF),
         }
         return color_map.get(detector, QColor(0xFF, 0xFF, 0xFF))
+
+    def _get_enabled_segments(self) -> list[Segment]:
+        """Return only enabled segments from current pipeline wrapper.
+
+        Returns:
+            List of enabled segments.
+        """
+        if not self._pipeline_wrapper:
+            return []
+        result: list[Segment] = []
+        for s in self._pipeline_wrapper.current_segments:
+            if not hasattr(s, "attrs") or s.attrs is None:
+                s.attrs = {}
+            if s.attrs.get("enabled", True):
+                result.append(s)
+        return result
+
+    def _get_display_segments(self) -> list[Segment]:
+        """Return segments list respecting show-disabled toggle.
+
+        When showing disabled, return all segments; otherwise only enabled.
+        """
+        show_disabled = getattr(self, "_show_disabled_action", None) is None or self._show_disabled_action.isChecked()
+        if show_disabled:
+            return list(self._pipeline_wrapper.current_segments) if self._pipeline_wrapper else []
+        return self._get_enabled_segments()
+
+    def _maybe_auto_reorder(self) -> None:
+        """Re-order samples by start if Auto Sample Order is enabled."""
+        try:
+            if getattr(self, "_auto_order_action", None) and self._auto_order_action.isChecked() and self._pipeline_wrapper:
+                self._pipeline_wrapper.current_segments.sort(key=lambda s: s.start)
+        except Exception:
+            pass
 

@@ -42,6 +42,10 @@ class NavigatorScrollbar(QWidget):
             "handle": QColor(0xFF, 0xFF, 0xFF, 0xA0),
             "marker": QColor(0x00, 0xFF, 0x6A, 0x80),
         }
+        self._show_disabled: bool = True
+        # Independent navigator display window (visual zoom only)
+        self._nav_start_time = 0.0
+        self._nav_end_time = 0.0
 
     def set_duration(self, duration: float) -> None:
         """Set total audio duration.
@@ -50,6 +54,9 @@ class NavigatorScrollbar(QWidget):
             duration: Duration in seconds.
         """
         self._duration = max(0.0, duration)
+        # Reset navigator window to full range
+        self._nav_start_time = 0.0
+        self._nav_end_time = self._duration
         self.update()
 
     def set_view_range(self, start_time: float, end_time: float) -> None:
@@ -74,68 +81,30 @@ class NavigatorScrollbar(QWidget):
         self.update()
 
     def _update_overview_image(self) -> None:
-        """Update overview image from tile."""
+        """Update overview image from tile.
+
+        Uses precomputed RGBA if available and scales with QImage for speed.
+        """
         if self._overview_tile is None:
             self._overview_image = None
             return
 
         tile = self._overview_tile
-        width = self.width()
-        height = self.height()
-
-        if width <= 0 or height <= 0:
-            return
-
-        # Convert spectrogram to image
-        spec = tile.spectrogram
-        if spec.size == 0:
+        rgba = getattr(tile, "rgba", None)
+        if rgba is None or rgba.size == 0:
+            # Fallback to placeholder when no rgba present
             self._overview_image = None
             return
-
-        # Normalize spectrogram
-        spec_min = np.nanmin(spec)
-        spec_max = np.nanmax(spec)
-        if spec_max > spec_min:
-            spec_norm = (spec - spec_min) / (spec_max - spec_min)
-        else:
-            spec_norm = np.zeros_like(spec)
-
-        # Create QImage
-        # Transpose to get (time, frequency) for display
-        spec_display = np.flipud(spec_norm)  # Flip vertically (low freq at bottom)
-        spec_display = np.transpose(spec_display)  # Transpose to (time, frequency)
-
-        # Resize to widget dimensions
-        from scipy.ndimage import zoom
-
-        if spec_display.shape[0] > 0 and spec_display.shape[1] > 0:
-            time_zoom = width / spec_display.shape[0]
-            freq_zoom = height / spec_display.shape[1]
-            spec_resized = zoom(spec_display, (time_zoom, freq_zoom), order=1)
-        else:
-            spec_resized = spec_display
-
-        # Apply viridis colormap to normalized spectrogram values
-        from matplotlib.cm import get_cmap
-        viridis = get_cmap('viridis')
-        
-        # Apply colormap: takes normalized values (0-1) and returns RGBA (0-1)
-        # spec_resized is (time, frequency) with values in [0, 1]
-        rgba = viridis(spec_resized)  # Shape: (time, frequency, 4) where 4 is RGBA
-        
-        # Convert RGBA from [0, 1] to [0, 255] and remove alpha channel for RGB
-        rgb = (rgba[:, :, :3] * 255).astype(np.uint8)  # Shape: (time, frequency, 3)
-        
-        # Create QImage with RGB32 format
-        image = QImage(rgb.shape[0], rgb.shape[1], QImage.Format.Format_RGB32)
-        for y in range(rgb.shape[1]):
-            for x in range(rgb.shape[0]):
-                r, g, b = rgb[x, y]
-                # QImage.Format_RGB32 uses 0xAARRGGBB format
-                pixel_value = (0xFF << 24) | (r << 16) | (g << 8) | b
-                image.setPixel(x, y, pixel_value)
-
-        self._overview_image = image
+        # rgba is (freq x time x 4). Flip vertically so low freq at bottom.
+        arr = np.flip(rgba, axis=0)  # (freq, time, 4)
+        # Ensure C-contiguous buffer in (height, width, 4)
+        arr = np.ascontiguousarray(arr)
+        h = int(arr.shape[0])  # freq
+        w = int(arr.shape[1])  # time
+        bytes_per_line = 4 * w
+        image = QImage(arr.data, w, h, bytes_per_line, QImage.Format.Format_RGBA8888)
+        # Detach from numpy buffer
+        self._overview_image = image.copy()
 
     def set_sample_markers(self, markers: list[tuple[float, float, QColor]]) -> None:
         """Set sample markers to display.
@@ -144,6 +113,11 @@ class NavigatorScrollbar(QWidget):
             markers: List of (start_time, end_time, color) tuples.
         """
         self._sample_markers = markers
+        self.update()
+
+    def set_show_disabled(self, show: bool) -> None:
+        """Set whether disabled markers should be drawn when provided by caller."""
+        self._show_disabled = bool(show)
         self.update()
 
     def set_theme_colors(self, colors: dict[str, QColor]) -> None:
@@ -169,33 +143,47 @@ class NavigatorScrollbar(QWidget):
         if self._duration <= 0:
             return
 
-        # Draw overview spectrogram
+        # Draw overview spectrogram (respect navigator window zoom)
         if self._overview_image and not self._overview_image.isNull():
-            # Scale image to fit widget
-            image_rect = QRectF(0, 0, width, height)
-            painter.drawImage(image_rect, self._overview_image)
+            # Source rect corresponds to [nav_start, nav_end] over full duration
+            img_w = self._overview_image.width()
+            img_h = self._overview_image.height()
+            if self._duration > 0 and img_w > 0 and img_h > 0:
+                nav_start = max(0.0, min(self._nav_start_time, self._duration))
+                nav_end = max(nav_start, min(self._nav_end_time, self._duration))
+                src_x = int((nav_start / self._duration) * img_w)
+                src_w = max(1, int(((nav_end - nav_start) / self._duration) * img_w))
+                src_rect = QRectF(src_x, 0, src_w, img_h)
+                dst_rect = QRectF(0, 0, width, height)
+                painter.drawImage(dst_rect, self._overview_image, src_rect)
+            else:
+                image_rect = QRectF(0, 0, width, height)
+                painter.drawImage(image_rect, self._overview_image)
         else:
             # Draw placeholder
             painter.fillRect(self.rect(), self._theme_colors["overview"])
 
-        # Draw sample markers
+        # Draw sample markers (map times through navigator window)
         if self._sample_markers:
-            pixels_per_second = width / self._duration
+            nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+            pixels_per_second = width / nav_duration if nav_duration > 0 else 0
             marker_pen = QPen()
             marker_pen.setWidth(2)
             for start_time, end_time, color in self._sample_markers:
-                x1 = int(start_time * pixels_per_second)
-                x2 = int(end_time * pixels_per_second)
+                # Map to navigator-local coordinates
+                x1 = int((start_time - self._nav_start_time) * pixels_per_second)
+                x2 = int((end_time - self._nav_start_time) * pixels_per_second)
                 x1 = max(0, min(x1, width))
                 x2 = max(x1, min(x2, width))
                 if x2 > x1:
                     painter.setPen(color)
                     painter.drawRect(x1, 0, x2 - x1, height)
 
-        # Draw view indicator
-        pixels_per_second = width / self._duration
-        view_x1 = int(self._view_start_time * pixels_per_second)
-        view_x2 = int(self._view_end_time * pixels_per_second)
+        # Draw view indicator using navigator window mapping
+        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        pixels_per_second = width / nav_duration if nav_duration > 0 else 0
+        view_x1 = int((self._view_start_time - self._nav_start_time) * pixels_per_second)
+        view_x2 = int((self._view_end_time - self._nav_start_time) * pixels_per_second)
         view_x1 = max(0, min(view_x1, width))
         view_x2 = max(view_x1, min(view_x2, width))
 
@@ -223,10 +211,11 @@ class NavigatorScrollbar(QWidget):
 
         x = int(event.position().x())
         width = self.width()
-        pixels_per_second = width / self._duration if self._duration > 0 else 0
+        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        pixels_per_second = width / nav_duration if nav_duration > 0 else 0
 
-        view_x1 = int(self._view_start_time * pixels_per_second)
-        view_x2 = int(self._view_end_time * pixels_per_second)
+        view_x1 = int((self._view_start_time - self._nav_start_time) * pixels_per_second)
+        view_x2 = int((self._view_end_time - self._nav_start_time) * pixels_per_second)
         handle_width = self._resize_handle_width
 
         # Check if clicking on resize handles
@@ -248,8 +237,9 @@ class NavigatorScrollbar(QWidget):
             self._drag_start_x = x
             self._drag_start_view_start = self._view_start_time
         else:
-            # Clicking outside view - jump to position
-            time = (x / pixels_per_second) if pixels_per_second > 0 else 0.0
+            # Clicking outside view - jump to position within navigator window
+            local_time = (x / pixels_per_second) if pixels_per_second > 0 else 0.0
+            time = self._nav_start_time + local_time
             time = max(0.0, min(time, self._duration))
             view_duration = self._view_end_time - self._view_start_time
             new_start = max(0.0, min(time - view_duration / 2, self._duration - view_duration))
@@ -264,7 +254,8 @@ class NavigatorScrollbar(QWidget):
 
         x = int(event.position().x())
         width = self.width()
-        pixels_per_second = width / self._duration if self._duration > 0 else 0
+        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        pixels_per_second = width / nav_duration if nav_duration > 0 else 0
 
         if pixels_per_second <= 0:
             return
@@ -299,7 +290,9 @@ class NavigatorScrollbar(QWidget):
     def resizeEvent(self, event) -> None:
         """Handle widget resize."""
         super().resizeEvent(event)
-        self._update_overview_image()
+        # Only scale existing image; avoid recomputing or re-colormapping
+        if self._overview_tile is not None and self._overview_image is None:
+            self._update_overview_image()
         self.update()
 
     def sizeHint(self):
@@ -307,4 +300,79 @@ class NavigatorScrollbar(QWidget):
         from PySide6.QtCore import QSize
 
         return QSize(100, 80)
+
+    # Helper to map x to absolute time using navigator window
+    def _time_from_x(self, x: float) -> float:
+        width = max(1, self.width())
+        rel = max(0.0, min(1.0, x / float(width)))
+        nav_duration = max(0.0, self._nav_end_time - self._nav_start_time)
+        return self._nav_start_time + rel * nav_duration
+
+    def wheelEvent(self, event) -> None:
+        """Zoom the navigator window visually around the mouse cursor.
+
+        Does not change the main view; no signals emitted.
+        """
+        if self._duration <= 0:
+            return
+        dy = 0
+        dx = 0
+        try:
+            ad = event.angleDelta()
+            dy = int(getattr(ad, "y")()) if hasattr(ad, "y") else int(ad.y())
+            dx = int(getattr(ad, "x")()) if hasattr(ad, "x") else int(ad.x())
+        except Exception:
+            dy = dy or 0
+            dx = dx or 0
+        if dy == 0 and dx == 0:
+            try:
+                pd = event.pixelDelta()
+                dy = int(getattr(pd, "y")()) if hasattr(pd, "y") else int(pd.y())
+                dx = int(getattr(pd, "x")()) if hasattr(pd, "x") else int(pd.x())
+            except Exception:
+                pass
+        if dy == 0 and dx == 0:
+            return
+        # ALT-held: horizontal pan
+        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            nav_start = self._nav_start_time
+            nav_end = self._nav_end_time if self._nav_end_time > self._nav_start_time else max(self._nav_start_time, self._duration)
+            nav_dur = max(1e-6, nav_end - nav_start)
+            # Determine left/right: prefer vertical delta; fallback to horizontal
+            if dy != 0:
+                direction = -1 if dy > 0 else 1  # wheel up = pan left
+            else:
+                direction = 1 if dx > 0 else -1  # right = pan right
+            delta = 0.1 * nav_dur * direction
+            new_start = max(0.0, min(nav_start + delta, max(0.0, self._duration - nav_dur)))
+            self._nav_start_time = new_start
+            self._nav_end_time = new_start + nav_dur
+            self.update()
+            event.accept()
+            return
+
+        # Default: zoom around cursor
+        step = 1.2
+        # Use vertical delta for zoom direction; if zero, use horizontal
+        primary = dy if dy != 0 else dx
+        zoom = step if primary > 0 else 1.0 / step
+
+        cursor_x = float(event.position().x())
+        cursor_time = self._time_from_x(cursor_x)
+
+        nav_start = self._nav_start_time
+        nav_end = self._nav_end_time if self._nav_end_time > self._nav_start_time else max(self._nav_start_time, self._duration)
+        nav_dur = max(1e-6, nav_end - nav_start)
+
+        new_dur = max(0.5, min(self._duration, nav_dur / zoom))
+        rel = (cursor_time - nav_start) / nav_dur
+        rel = max(0.0, min(1.0, rel))
+        new_start = cursor_time - rel * new_dur
+        new_start = max(0.0, min(new_start, max(0.0, self._duration - new_dur)))
+        new_end = new_start + new_dur
+
+        self._nav_start_time = new_start
+        self._nav_end_time = new_end
+        self.update()
+        event.accept()
 
