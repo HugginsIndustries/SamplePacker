@@ -66,11 +66,9 @@ jobs:
       
       - name: Build PyInstaller executable
         run: |
-          pyinstaller --onefile --name samplepacker \
-            --add-data "samplepacker/presets:presets" \
-            samplepacker/cli.py
+          pyinstaller samplepacker.spec
       
       - name: Test executable
         run: |
-          ./dist/samplepacker --help
+          ./dist/samplepacker-gui --help
 

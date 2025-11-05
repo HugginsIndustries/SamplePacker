@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['samplepacker\\cli.py'],
+    ['samplepacker/gui/main.py'],
     pathex=[],
     binaries=[],
     datas=[('samplepacker/presets', 'presets')],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='samplepacker',
+    name='samplepacker-gui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
