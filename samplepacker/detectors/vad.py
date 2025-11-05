@@ -1,6 +1,5 @@
 """Voice Activity Detection using WebRTC VAD."""
 
-
 import numpy as np
 
 try:

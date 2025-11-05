@@ -1,6 +1,5 @@
 """Non-silence detection using energy envelope."""
 
-
 import numpy as np
 
 from samplepacker.detectors.base import BaseDetector, Segment
@@ -89,7 +88,5 @@ class NonSilenceEnergyDetector(BaseDetector):
         if in_seg:
             seg_end = len(mask) * frame_sec
             if (seg_end - seg_start) * 1000.0 >= self.min_duration_ms:
-                segments.append(
-                    Segment(seg_start, seg_end, "nonsilence_energy", float(np.max(z)))
-                )
+                segments.append(Segment(seg_start, seg_end, "nonsilence_energy", float(np.max(z))))
         return segments

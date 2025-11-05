@@ -1,6 +1,5 @@
 """Transient detection using spectral flux."""
 
-
 import numpy as np
 
 from samplepacker.detectors.base import BaseDetector, Segment
@@ -93,7 +92,7 @@ class TransientFluxDetector(BaseDetector):
                 seg_end = t
                 dur_ms = (seg_end - seg_start) * 1000.0
                 if self.min_duration_ms <= dur_ms <= self.max_duration_ms:
-                    score = float(np.max(z[max(0, i - 4): i + 1]))
+                    score = float(np.max(z[max(0, i - 4) : i + 1]))
                     segments.append(Segment(seg_start, seg_end, "transient_flux", score))
         if in_seg:
             seg_end = len(mask) * frame_sec

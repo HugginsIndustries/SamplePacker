@@ -13,16 +13,20 @@ logger = logging.getLogger(__name__)
 
 class DetectionWorker(QThread):
     """Legacy worker thread (unused when using process pool)."""
+
     progress = Signal(str)
     finished = Signal(dict)
     error = Signal(str)
+
     def __init__(self, pipeline_wrapper: PipelineWrapper, output_dir: Path | None = None):
         super().__init__()
         self.pipeline_wrapper = pipeline_wrapper
         self.output_dir = output_dir
         self._cancelled = False
+
     def cancel(self) -> None:
         self._cancelled = True
+
     def run(self) -> None:
         try:
             self.progress.emit("Detecting samples...")
@@ -74,10 +78,13 @@ class DetectionManager(QObject):
         # If an existing future is running, ignore or cancel
         self.progress.emit("Detecting samples...")
         try:
+
             def _cb(result: dict[str, Any]) -> None:
                 self.finished.emit(result)
 
-            self._future = self._pipeline_wrapper.detect_samples_async(output_dir=output_dir, callback=_cb)
+            self._future = self._pipeline_wrapper.detect_samples_async(
+                output_dir=output_dir, callback=_cb
+            )
         except Exception as e:
             self.error.emit(str(e))
 
@@ -102,5 +109,3 @@ class DetectionManager(QObject):
             return not self._future.done()
         except Exception:
             return False
-
-

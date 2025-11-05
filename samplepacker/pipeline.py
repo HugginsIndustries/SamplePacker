@@ -49,7 +49,9 @@ class ProcessingSettings:
         self.export_post_pad_ms: float = kwargs.get("export_post_pad_ms", 0.0)
         # Legacy fields for backward compatibility - use detection padding if not set
         self.pre_pad_ms: float = kwargs.get("pre_pad_ms", kwargs.get("detection_pre_pad_ms", 0.0))
-        self.post_pad_ms: float = kwargs.get("post_pad_ms", kwargs.get("detection_post_pad_ms", 0.0))
+        self.post_pad_ms: float = kwargs.get(
+            "post_pad_ms", kwargs.get("detection_post_pad_ms", 0.0)
+        )
         self.merge_gap_ms: float = kwargs.get("merge_gap_ms", 0.0)
         self.min_dur_ms: float = kwargs.get("min_dur_ms", 100.0)
         self.max_dur_ms: float = kwargs.get("max_dur_ms", 60000.0)
@@ -195,12 +197,12 @@ def spread_samples_across_duration(
     audio_duration: float,
 ) -> list[Segment]:
     """Distribute samples evenly across the audio duration.
-    
+
     Args:
         segments: List of segments to select from (must be sorted by start time).
         max_samples: Maximum number of samples to return.
         audio_duration: Total audio duration in seconds.
-        
+
     Returns:
         List of segments distributed across the audio duration.
     """
@@ -221,7 +223,7 @@ def spread_samples_across_duration(
         # Find the closest unused segment to this window center
         best_idx = None
         best_seg = None
-        best_distance = float('inf')
+        best_distance = float("inf")
 
         for idx, seg in enumerate(segments):
             if idx in used_indices:
@@ -250,7 +252,8 @@ def spread_samples_across_duration(
         # Select the best segment for this window
         if best_seg is not None:
             selected.append(best_seg)
-            used_indices.add(best_idx)
+            if best_idx is not None:
+                used_indices.add(best_idx)
 
     # Sort selected segments by start time
     return sorted(selected, key=lambda s: s.start)
@@ -338,8 +341,12 @@ def deduplicate_segments_after_padding(
     for cand in sorted_padded:
         drop = False
         for other in kept:
-            c0, c1 = float(cand.attrs.get("raw_start", cand.start)), float(cand.attrs.get("raw_end", cand.end))
-            o0, o1 = float(other.attrs.get("raw_start", other.start)), float(other.attrs.get("raw_end", other.end))
+            c0, c1 = float(cand.attrs.get("raw_start", cand.start)), float(
+                cand.attrs.get("raw_end", cand.end)
+            )
+            o0, o1 = float(other.attrs.get("raw_start", other.start)), float(
+                other.attrs.get("raw_end", other.end)
+            )
             raw_contained = (c0 >= o0 and c1 <= o1) or (o0 >= c0 and o1 <= c1)
             raw_overlap = max(0.0, min(c1, o1) - max(c0, o0)) > 0.0
             if raw_contained or raw_overlap or iou_raw(cand, other) >= 0.5:
@@ -414,7 +421,6 @@ def process_file(
     data_dir = out_base / "data"
     for d in [samples_dir, spectro_dir, markers_dir, data_dir]:
         d.mkdir(parents=True, exist_ok=True)
-    run_log = data_dir / "run.log"
 
     audio_info = get_audio_info(input_path)
 
@@ -447,10 +453,13 @@ def process_file(
 
     # Analysis copy
     if not analysis_path.exists() or not settings.cache:
-        resample_for_analysis(denoised_path, analysis_path, target_sr=settings.analysis_sr, channels=1)
+        resample_for_analysis(
+            denoised_path, analysis_path, target_sr=settings.analysis_sr, channels=1
+        )
 
     # Load analysis audio
     import soundfile as sf
+
     analysis_audio, sr = sf.read(analysis_path)
     if analysis_audio.ndim > 1:
         analysis_audio = analysis_audio[:, 0]
@@ -514,10 +523,12 @@ def process_file(
     # Overlap resolution
     if settings.resolve_overlaps in ("keep-highest", "merge"):
         if settings.resolve_overlaps == "keep-highest":
+
             def iou(a: Segment, b: Segment) -> float:
                 inter = max(0.0, min(a.end, b.end) - max(a.start, b.start))
                 union = (a.end - a.start) + (b.end - b.start) - inter
                 return 0.0 if union <= 0 else inter / union
+
             gap_sec = settings.min_gap_ms / 1000.0
             sorted_by_score = sorted(final_segments, key=lambda s: s.score, reverse=True)
             kept: list[Segment] = []
@@ -583,7 +594,9 @@ def process_file(
 
     # Summary
     versions = {"samplepacker": "0.1.0"}
-    save_summary_json(data_dir / "summary.json", audio_info, settings.__dict__, final_segments, {}, versions)
+    save_summary_json(
+        data_dir / "summary.json", audio_info, settings.__dict__, final_segments, {}, versions
+    )
     if settings.report == "html":
         create_html_report(base_name, out_base, final_segments, audio_info, settings.__dict__, {})
 

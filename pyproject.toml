@@ -68,8 +68,15 @@ include = '\.pyi?$'
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "B", "C4", "UP"]
-ignore = ["E501"]  # Line too long (handled by black)
+# E501 handled by Black; W293 (blank line contains whitespace) ignored to reduce noise
+ignore = ["E501", "W293"]
+
+# Qt overrides and signal names use mixedCase; also suppress B008 in Qt models
+[tool.ruff.lint.per-file-ignores]
+"samplepacker/gui/*.py" = ["N802", "N815", "B008"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -77,6 +84,19 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
+
+# Targeted relaxations using overrides to play nicely with PySide6 and plotting
+[[tool.mypy.overrides]]
+module = ["samplepacker.gui.*"]
+disable_error_code = ["attr-defined", "name-defined", "arg-type", "assignment"]
+
+[[tool.mypy.overrides]]
+module = ["samplepacker.report"]
+disable_error_code = ["arg-type", "index"]
+
+[[tool.mypy.overrides]]
+module = ["samplepacker.detectors.vad"]
+disable_error_code = ["union-attr", "assignment"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

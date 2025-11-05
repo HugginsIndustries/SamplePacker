@@ -70,7 +70,7 @@ class SpectrogramWidget(QWidget):
         self._tiler = SpectrogramTiler()
         self._current_tile: Any = None
         self._overview_tile: Any = None
-        self._im = None  # persistent AxesImage for spectrogram
+        self._im: Any | None = None  # persistent AxesImage for spectrogram
         self._grid_artists: list[Any] = []
         self._segment_artists: list[Any] = []
         self._audio_path: Path | None = None
@@ -116,7 +116,9 @@ class SpectrogramWidget(QWidget):
         # Drag start timer for double-click prevention
         self._drag_start_timer: QTimer | None = None
         self._min_hold_duration_ms = 150  # Minimum hold duration before drag starts
-        self._pending_drag_operation: str | None = None  # 'drag', 'resize_left', 'resize_right', or None
+        self._pending_drag_operation: str | None = (
+            None  # 'drag', 'resize_left', 'resize_right', or None
+        )
         self._pending_drag_index: int | None = None  # Segment index for pending drag
         self._pending_drag_click_time: float | None = None  # Time position where click occurred
 
@@ -259,7 +261,9 @@ class SpectrogramWidget(QWidget):
         """
         try:
             if self._audio_path and self._audio_path.exists() and self._end_time > self._start_time:
-                tile = self._tiler.generate_tile(self._audio_path, self._start_time, self._end_time, sample_rate=None)
+                tile = self._tiler.generate_tile(
+                    self._audio_path, self._start_time, self._end_time, sample_rate=None
+                )
                 self._current_tile = tile
                 # Force an immediate draw with the new tile
                 self._im = None  # ensure creation if not present
@@ -332,6 +336,7 @@ class SpectrogramWidget(QWidget):
 
         # Async request for current view
         if self._audio_path and self._audio_path.exists():
+
             def _on_ready(tile):
                 # Ensure UI updates occur on the GUI thread
                 def _apply():
@@ -343,13 +348,21 @@ class SpectrogramWidget(QWidget):
                         pass
                     # Use draw_idle to coalesce repaints
                     self._canvas.draw_idle()
+
                 try:
                     QTimer.singleShot(0, _apply)
                 except Exception:
                     # Fallback in case QTimer fails in this context
                     _apply()
+
             try:
-                self._tiler.request_tile(self._audio_path, self._start_time, self._end_time, sample_rate=None, callback=_on_ready)
+                self._tiler.request_tile(
+                    self._audio_path,
+                    self._start_time,
+                    self._end_time,
+                    sample_rate=None,
+                    callback=_on_ready,
+                )
                 self._tiler.prefetch_neighbors(self._audio_path, self._start_time, self._end_time)
             except Exception:
                 pass
@@ -366,7 +379,7 @@ class SpectrogramWidget(QWidget):
 
     def _update_overlays_only(self) -> None:
         """Update only overlays (segments, grid) without requesting tiles.
-        
+
         Use this during drag/resize operations when the time range hasn't changed
         to avoid unnecessary tile cache lookups.
         """
@@ -395,7 +408,9 @@ class SpectrogramWidget(QWidget):
         # Grid (on top of spectrogram) with line count limiting
         if self._grid_manager.settings.visible:
             grid_positions = self._grid_manager.get_grid_positions(self._start_time, self._end_time)
-            major_positions = self._grid_manager.get_major_grid_positions(self._start_time, self._end_time)
+            major_positions = self._grid_manager.get_major_grid_positions(
+                self._start_time, self._end_time
+            )
             max_lines = 80
             if len(grid_positions) > max_lines:
                 step = max(1, int(len(grid_positions) / max_lines))
@@ -405,10 +420,22 @@ class SpectrogramWidget(QWidget):
                 major_positions = major_positions[::step]
             for pos in grid_positions:
                 if pos not in major_positions:
-                    ln = self._ax.axvline(pos, color=(0x3C / 255, 0x3C / 255, 0x3C / 255, 0.5), linestyle="--", linewidth=0.5, zorder=1)
+                    ln = self._ax.axvline(
+                        pos,
+                        color=(0x3C / 255, 0x3C / 255, 0x3C / 255, 0.5),
+                        linestyle="--",
+                        linewidth=0.5,
+                        zorder=1,
+                    )
                     self._grid_artists.append(ln)
             for pos in major_positions:
-                ln = self._ax.axvline(pos, color=(0x45 / 255, 0x45 / 255, 0x45 / 255, 0.8), linestyle="-", linewidth=1, zorder=1)
+                ln = self._ax.axvline(
+                    pos,
+                    color=(0x45 / 255, 0x45 / 255, 0x45 / 255, 0.8),
+                    linestyle="-",
+                    linewidth=1,
+                    zorder=1,
+                )
                 self._grid_artists.append(ln)
 
         # Segments
@@ -417,7 +444,11 @@ class SpectrogramWidget(QWidget):
                 continue
             color = self._get_segment_color(seg.detector)
             alpha = 0.3 if i == self._selected_index else 0.2
-            edge_color = self._theme_colors["selection_border"].name() if i == self._selected_index else "white"
+            edge_color = (
+                self._theme_colors["selection_border"].name()
+                if i == self._selected_index
+                else "white"
+            )
             seg_start = max(seg.start, self._start_time)
             seg_end = min(seg.end, self._end_time)
             seg_width = seg_end - seg_start
@@ -429,25 +460,46 @@ class SpectrogramWidget(QWidget):
             if not is_enabled and not self._show_disabled:
                 continue
             draw_alpha = alpha if is_enabled else 0.1
-            span = self._ax.axvspan(seg_start, seg_end, alpha=draw_alpha, color=color, edgecolor=edge_color, linewidth=2, zorder=2)
+            span = self._ax.axvspan(
+                seg_start,
+                seg_end,
+                alpha=draw_alpha,
+                color=color,
+                edgecolor=edge_color,
+                linewidth=2,
+                zorder=2,
+            )
             self._segment_artists.append(span)
             if not is_enabled and self._show_disabled:
                 ylim = self._ax.get_ylim()
                 x0, x1 = seg_start, seg_end
                 y0, y1 = ylim[0], ylim[1]
-                ln1, = self._ax.plot([x0, x1], [y0, y1], color="#FF6666", linewidth=1.5, zorder=3)
-                ln2, = self._ax.plot([x0, x1], [y1, y0], color="#FF6666", linewidth=1.5, zorder=3)
+                (ln1,) = self._ax.plot([x0, x1], [y0, y1], color="#FF6666", linewidth=1.5, zorder=3)
+                (ln2,) = self._ax.plot([x0, x1], [y1, y0], color="#FF6666", linewidth=1.5, zorder=3)
                 self._segment_artists.extend([ln1, ln2])
             label_x = seg_start + seg_width / 2
-            txt = self._ax.text(label_x, self._ax.get_ylim()[1] * 0.95, str(i), color="white", ha="center", va="top", fontsize=8)
+            txt = self._ax.text(
+                label_x,
+                self._ax.get_ylim()[1] * 0.95,
+                str(i),
+                color="white",
+                ha="center",
+                va="top",
+                fontsize=8,
+            )
             self._segment_artists.append(txt)
 
         # Preview rectangle for sample creation
-        if self._creating_sample and self._pending_create_start is not None and self._pending_create_end is not None:
+        if (
+            self._creating_sample
+            and self._pending_create_start is not None
+            and self._pending_create_end is not None
+        ):
             preview_start = max(self._pending_create_start, self._start_time)
             preview_end = min(self._pending_create_end, self._end_time)
             if preview_end > preview_start:
                 from matplotlib.patches import Rectangle
+
                 ylim = self._ax.get_ylim()
                 rect = Rectangle(
                     (preview_start, ylim[0]),
@@ -458,7 +510,7 @@ class SpectrogramWidget(QWidget):
                     edgecolor="white",
                     linewidth=2,
                     linestyle="--",
-                    zorder=2
+                    zorder=2,
                 )
                 self._ax.add_patch(rect)
                 self._segment_artists.append(rect)
@@ -478,7 +530,7 @@ class SpectrogramWidget(QWidget):
                 return
             freq_min = freq[0]
             freq_max = freq[-1]
-            extent = [tile.start_time, tile.end_time, freq_min, freq_max]
+            extent = (float(tile.start_time), float(tile.end_time), float(freq_min), float(freq_max))
             # Prefer precolored RGBA if present
             if getattr(tile, "rgba", None) is not None and tile.rgba.size > 0:
                 rgba = tile.rgba  # shape: (freq, time, 4)
@@ -501,7 +553,11 @@ class SpectrogramWidget(QWidget):
                     return
                 spec_min = np.nanmin(spec)
                 spec_max = np.nanmax(spec)
-                spec_normalized = np.zeros_like(spec) if spec_max <= spec_min else (spec - spec_min) / (spec_max - spec_min)
+                spec_normalized = (
+                    np.zeros_like(spec)
+                    if spec_max <= spec_min
+                    else (spec - spec_min) / (spec_max - spec_min)
+                )
                 if self._im is None:
                     self._im = self._ax.imshow(
                         spec_normalized,
@@ -534,7 +590,9 @@ class SpectrogramWidget(QWidget):
             # Calculate time indices for current view
             if tile.end_time <= tile.start_time or self._duration <= 0:
                 return
-            time_ratio_start = (self._start_time - tile.start_time) / (tile.end_time - tile.start_time)
+            time_ratio_start = (self._start_time - tile.start_time) / (
+                tile.end_time - tile.start_time
+            )
             time_ratio_end = (self._end_time - tile.start_time) / (tile.end_time - tile.start_time)
             time_ratio_start = max(0.0, min(1.0, time_ratio_start))
             time_ratio_end = max(0.0, min(1.0, time_ratio_end))
@@ -546,7 +604,7 @@ class SpectrogramWidget(QWidget):
                 t1 = int(time_ratio_end * time_bins)
                 t1 = max(t0 + 1, min(t1, time_bins))
                 rgba_crop = rgba[:, t0:t1, :]  # (freq, cropped_time, 4)
-                extent = [self._start_time, self._end_time, freq_min, freq_max]
+                extent = (float(self._start_time), float(self._end_time), float(freq_min), float(freq_max))
                 if self._im is None:
                     self._im = self._ax.imshow(
                         rgba_crop,
@@ -571,8 +629,12 @@ class SpectrogramWidget(QWidget):
                 spec_crop = spec[:, t0:t1]
                 spec_min = np.nanmin(spec_crop)
                 spec_max = np.nanmax(spec_crop)
-                spec_normalized = np.zeros_like(spec_crop) if spec_max <= spec_min else (spec_crop - spec_min) / (spec_max - spec_min)
-                extent = [self._start_time, self._end_time, freq_min, freq_max]
+                spec_normalized = (
+                    np.zeros_like(spec_crop)
+                    if spec_max <= spec_min
+                    else (spec_crop - spec_min) / (spec_max - spec_min)
+                )
+                extent = (float(self._start_time), float(self._end_time), float(freq_min), float(freq_max))
                 if self._im is None:
                     self._im = self._ax.imshow(
                         spec_normalized,
@@ -610,7 +672,7 @@ class SpectrogramWidget(QWidget):
 
     def _get_handle_width(self) -> float:
         """Get handle width in seconds based on zoom level.
-        
+
         Returns:
             Handle width in seconds.
         """
@@ -622,11 +684,11 @@ class SpectrogramWidget(QWidget):
 
     def _check_handle_hover(self, time: float, seg_index: int | None) -> str | None:
         """Check if mouse is hovering over a resize handle.
-        
+
         Args:
             time: Time position.
             seg_index: Segment index to check, or None to check all.
-            
+
         Returns:
             'left', 'right', or None.
         """
@@ -634,9 +696,9 @@ class SpectrogramWidget(QWidget):
             seg = self._segments[seg_index]
             handle_width = self._get_handle_width()
             if abs(time - seg.start) < handle_width:
-                return 'left'
+                return "left"
             elif abs(time - seg.end) < handle_width:
-                return 'right'
+                return "right"
         return None
 
     def _on_mouse_press(self, event) -> None:
@@ -673,7 +735,7 @@ class SpectrogramWidget(QWidget):
                 # Determine operation type and start timer
                 if abs(time - seg.start) < handle_width:
                     # Will resize left edge
-                    self._pending_drag_operation = 'resize_left'
+                    self._pending_drag_operation = "resize_left"
                     self._pending_drag_index = clicked_index
                     self._pending_drag_click_time = time
                     # Start timer to delay actual resize start
@@ -683,7 +745,7 @@ class SpectrogramWidget(QWidget):
                     self._drag_start_timer.start(self._min_hold_duration_ms)
                 elif abs(time - seg.end) < handle_width:
                     # Will resize right edge
-                    self._pending_drag_operation = 'resize_right'
+                    self._pending_drag_operation = "resize_right"
                     self._pending_drag_index = clicked_index
                     self._pending_drag_click_time = time
                     # Start timer to delay actual resize start
@@ -693,7 +755,7 @@ class SpectrogramWidget(QWidget):
                     self._drag_start_timer.start(self._min_hold_duration_ms)
                 else:
                     # Will drag segment
-                    self._pending_drag_operation = 'drag'
+                    self._pending_drag_operation = "drag"
                     self._pending_drag_index = clicked_index
                     self._pending_drag_click_time = time
                     # Start timer to delay actual drag start
@@ -714,24 +776,28 @@ class SpectrogramWidget(QWidget):
 
     def _on_drag_timer_expired(self) -> None:
         """Handle drag start timer expiration - actually start the drag/resize operation."""
-        if self._pending_drag_operation is None or self._pending_drag_index is None or self._pending_drag_click_time is None:
+        if (
+            self._pending_drag_operation is None
+            or self._pending_drag_index is None
+            or self._pending_drag_click_time is None
+        ):
             return
 
         clicked_index = self._pending_drag_index
         time = self._pending_drag_click_time
         seg = self._segments[clicked_index]
 
-        if self._pending_drag_operation == 'resize_left':
+        if self._pending_drag_operation == "resize_left":
             self.sample_resize_started.emit(clicked_index)
             self._resizing_left = True
             self._drag_start_time = time
             self._resize_initial_start = seg.start
-        elif self._pending_drag_operation == 'resize_right':
+        elif self._pending_drag_operation == "resize_right":
             self.sample_resize_started.emit(clicked_index)
             self._resizing_right = True
             self._drag_start_time = time
             self._resize_initial_end = seg.end
-        elif self._pending_drag_operation == 'drag':
+        elif self._pending_drag_operation == "drag":
             self.sample_drag_started.emit(clicked_index)
             self._dragging = True
             self._drag_start_time = time
@@ -754,9 +820,17 @@ class SpectrogramWidget(QWidget):
                 self._pending_drag_click_time = None
 
             # Apply pending changes and emit signals
-            if self._dragging and self._selected_index is not None and self._pending_drag_start is not None and self._pending_drag_end is not None:
+            if (
+                self._dragging
+                and self._selected_index is not None
+                and self._pending_drag_start is not None
+                and self._pending_drag_end is not None
+            ):
                 # Restore original segment position first
-                if self._original_segment_start is not None and self._original_segment_end is not None:
+                if (
+                    self._original_segment_start is not None
+                    and self._original_segment_end is not None
+                ):
                     seg = self._segments[self._selected_index]
                     seg.start = self._original_segment_start
                     seg.end = self._original_segment_end
@@ -764,11 +838,17 @@ class SpectrogramWidget(QWidget):
                 seg.start = self._pending_drag_start
                 seg.end = self._pending_drag_end
                 # Emit signal
-                self.sample_moved.emit(self._selected_index, self._pending_drag_start, self._pending_drag_end)
+                self.sample_moved.emit(
+                    self._selected_index, self._pending_drag_start, self._pending_drag_end
+                )
                 # Clear pending state
                 self._pending_drag_start = None
                 self._pending_drag_end = None
-            elif self._resizing_left and self._selected_index is not None and self._pending_resize_start is not None:
+            elif (
+                self._resizing_left
+                and self._selected_index is not None
+                and self._pending_resize_start is not None
+            ):
                 # Restore original segment position first
                 if self._original_segment_start is not None:
                     seg = self._segments[self._selected_index]
@@ -780,7 +860,11 @@ class SpectrogramWidget(QWidget):
                 # Clear pending state
                 self._pending_resize_start = None
                 self._pending_resize_end = None
-            elif self._resizing_right and self._selected_index is not None and self._pending_resize_end is not None:
+            elif (
+                self._resizing_right
+                and self._selected_index is not None
+                and self._pending_resize_end is not None
+            ):
                 # Restore original segment position first
                 if self._original_segment_end is not None:
                     seg = self._segments[self._selected_index]
@@ -827,6 +911,7 @@ class SpectrogramWidget(QWidget):
                 if clicked_index is not None:
                     # Convert matplotlib figure coordinates to widget coordinates
                     from PySide6.QtCore import QPoint
+
                     canvas_pos = self._canvas.mapToGlobal(QPoint(0, 0))
                     widget_pos = canvas_pos + QPoint(int(event.x), int(event.y))
                     self._show_context_menu(clicked_index, widget_pos)
@@ -846,12 +931,14 @@ class SpectrogramWidget(QWidget):
         time = max(self._start_time, min(event.xdata, self._end_time))
 
         # Update cursor based on hover
-        if not (self._dragging or self._resizing_left or self._resizing_right or self._creating_sample):
+        if not (
+            self._dragging or self._resizing_left or self._resizing_right or self._creating_sample
+        ):
             clicked_index = self._find_segment_at_time(time)
             handle = self._check_handle_hover(time, clicked_index)
             if handle != self._hover_handle:
                 self._hover_handle = handle
-                if handle == 'left' or handle == 'right':
+                if handle == "left" or handle == "right":
                     self._canvas.setCursor(Qt.CursorShape.SizeHorCursor)
                 else:
                     self._canvas.setCursor(Qt.CursorShape.ArrowCursor)
@@ -862,8 +949,14 @@ class SpectrogramWidget(QWidget):
             # Calculate delta based on initial click position (time-based for accurate cursor tracking)
             dt = time - self._drag_start_time
             # Calculate new position from original segment position, preserving duration
-            original_start = self._original_segment_start if self._original_segment_start is not None else seg.start
-            original_end = self._original_segment_end if self._original_segment_end is not None else seg.end
+            original_start = (
+                self._original_segment_start
+                if self._original_segment_start is not None
+                else seg.start
+            )
+            original_end = (
+                self._original_segment_end if self._original_segment_end is not None else seg.end
+            )
             dur = max(0.01, original_end - original_start)
             proposed_start = original_start + dt
             # Snap start to grid if enabled; end follows to preserve duration
@@ -938,7 +1031,7 @@ class SpectrogramWidget(QWidget):
             return
         cursor_time = max(view_start, min(float(event.xdata), view_end))
         step = 1.2
-        is_zoom_in = (event.button == "up")
+        is_zoom_in = event.button == "up"
         zoom = step if is_zoom_in else 1.0 / step
         new_dur = max(0.5, min(self._duration, view_dur / zoom))
         rel = (cursor_time - view_start) / view_dur
@@ -956,11 +1049,11 @@ class SpectrogramWidget(QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         """Event filter for double-click detection and ESC key cancellation.
-        
+
         Args:
             obj: Object that received the event.
             event: QEvent object.
-            
+
         Returns:
             True if event was handled, False otherwise.
         """
@@ -996,7 +1089,9 @@ class SpectrogramWidget(QWidget):
                             else:
                                 direction = 1 if dx > 0 else -1  # right = pan right
                             shift = 0.1 * view_dur * direction
-                            new_start = max(0.0, min(view_start + shift, max(0.0, self._duration - view_dur)))
+                            new_start = max(
+                                0.0, min(view_start + shift, max(0.0, self._duration - view_dur))
+                            )
                             self._start_time = new_start
                             self._end_time = new_start + view_dur
                             self._update_display()
@@ -1038,6 +1133,7 @@ class SpectrogramWidget(QWidget):
                         pass
             elif event.type() == QEvent.Type.KeyPress:
                 from PySide6.QtGui import QKeyEvent
+
                 if isinstance(event, QKeyEvent) and event.key() == Qt.Key.Key_Escape:
                     # Cancel any pending drag timer
                     if self._drag_start_timer is not None:
@@ -1048,10 +1144,20 @@ class SpectrogramWidget(QWidget):
                         self._pending_drag_click_time = None
 
                     # Cancel any ongoing drag/resize/create operation
-                    if self._dragging or self._resizing_left or self._resizing_right or self._creating_sample:
+                    if (
+                        self._dragging
+                        or self._resizing_left
+                        or self._resizing_right
+                        or self._creating_sample
+                    ):
                         # Restore original segment positions if dragging/resizing
-                        if (self._dragging or self._resizing_left or self._resizing_right) and self._selected_index is not None:
-                            if self._original_segment_start is not None and self._original_segment_end is not None:
+                        if (
+                            self._dragging or self._resizing_left or self._resizing_right
+                        ) and self._selected_index is not None:
+                            if (
+                                self._original_segment_start is not None
+                                and self._original_segment_end is not None
+                            ):
                                 seg = self._segments[self._selected_index]
                                 seg.start = self._original_segment_start
                                 seg.end = self._original_segment_end
@@ -1078,7 +1184,7 @@ class SpectrogramWidget(QWidget):
 
     def _show_context_menu(self, seg_index: int, pos: QPoint) -> None:
         """Show context menu for segment.
-        
+
         Args:
             seg_index: Segment index.
             pos: Global screen position.
@@ -1092,9 +1198,13 @@ class SpectrogramWidget(QWidget):
 
         # Disable options
         disable_action = menu.addAction("Disable")
-        disable_action.triggered.connect(lambda: self.sample_disable_requested.emit(seg_index, True))
+        disable_action.triggered.connect(
+            lambda: self.sample_disable_requested.emit(seg_index, True)
+        )
         disable_others_action = menu.addAction("Disable Other Samples")
-        disable_others_action.triggered.connect(lambda: self.sample_disable_others_requested.emit(seg_index))
+        disable_others_action.triggered.connect(
+            lambda: self.sample_disable_others_requested.emit(seg_index)
+        )
 
         menu.addSeparator()
 
@@ -1102,7 +1212,9 @@ class SpectrogramWidget(QWidget):
         center_action = menu.addAction("Center")
         center_action.triggered.connect(lambda: self.sample_center_requested.emit(seg_index))
         center_fill_action = menu.addAction("Center Fill")
-        center_fill_action.triggered.connect(lambda: self.sample_center_fill_requested.emit(seg_index))
+        center_fill_action.triggered.connect(
+            lambda: self.sample_center_fill_requested.emit(seg_index)
+        )
 
         menu.addSeparator()
 
@@ -1124,4 +1236,3 @@ class SpectrogramWidget(QWidget):
             if seg.start <= time <= seg.end:
                 return i
         return None
-

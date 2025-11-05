@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
         self._ui_refresh_rate_enabled = True
         self._ui_refresh_rate_hz = 60
         self._ui_refresh_timer = None
-        self._pending_updates = {}
+        self._pending_updates: dict[str, object] = {}
         splitter.setStretchFactor(0, 0)
 
         # Timeline view (right) - use vertical splitter for editor/navigator
@@ -174,12 +174,18 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.sample_play_requested.connect(self._on_sample_play_requested)
         self._spectrogram_widget.time_clicked.connect(self._on_time_clicked)
         # New signals for context actions
-        self._spectrogram_widget.sample_disable_requested.connect(lambda idx, dis: self._on_disable_sample(idx, dis))
-        self._spectrogram_widget.sample_disable_others_requested.connect(self._on_disable_other_samples)
+        self._spectrogram_widget.sample_disable_requested.connect(
+            lambda idx, dis: self._on_disable_sample(idx, dis)
+        )
+        self._spectrogram_widget.sample_disable_others_requested.connect(
+            self._on_disable_other_samples
+        )
         self._spectrogram_widget.sample_center_requested.connect(self._on_center_clicked)
         self._spectrogram_widget.sample_center_fill_requested.connect(self._on_fill_clicked)
         # Keep navigator highlight synced to editor zoom/pan
-        self._spectrogram_widget.view_changed.connect(lambda s, e: self._navigator.set_view_range(s, e))
+        self._spectrogram_widget.view_changed.connect(
+            lambda s, e: self._navigator.set_view_range(s, e)
+        )
 
         # Vertical splitter for player and spectrogram (resizable)
         self._player_spectro_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -195,7 +201,7 @@ class MainWindow(QMainWindow):
         editor_widget.setLayout(editor_layout)
 
         # Navigator scrollbar
-        self._navigator = NavigatorScrollbar()
+        self._navigator: NavigatorScrollbar = NavigatorScrollbar()
         self._navigator.view_changed.connect(self._on_navigator_view_changed)
         self._navigator.view_resized.connect(self._on_navigator_view_resized)
         self._navigator.setMinimumHeight(60)
@@ -241,7 +247,9 @@ class MainWindow(QMainWindow):
             scrollbar_h = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
         except Exception:
             scrollbar_h = 18
-        table_height = self._sample_table_view.horizontalHeader().height() + (8 * 30) + scrollbar_h + 12
+        table_height = (
+            self._sample_table_view.horizontalHeader().height() + (8 * 30) + scrollbar_h + 12
+        )
         self._sample_table_view.setMinimumHeight(table_height)
         # Wire delegate signals
         self._sample_table_delegate.centerClicked.connect(self._on_center_clicked)
@@ -252,11 +260,13 @@ class MainWindow(QMainWindow):
         self._sample_table_model.enabledToggled.connect(self._on_model_enabled_toggled)
         self._sample_table_model.timesEdited.connect(self._on_model_times_edited)
         self._sample_table_model.durationEdited.connect(self._on_model_duration_edited)
+
         # Keep spectrogram selection in sync when user selects a column
         def on_selection_changed(_selected, _deselected):
             idx = self._sample_table_view.currentIndex()
             if idx.isValid():
                 self._on_sample_selected(idx.column())
+
         self._sample_table_view.selectionModel().selectionChanged.connect(on_selection_changed)
 
         # Main vertical splitter for editor/sample table
@@ -331,12 +341,16 @@ class MainWindow(QMainWindow):
         self._export_format_wav_action = QAction("&WAV", self)
         self._export_format_wav_action.setCheckable(True)
         self._export_format_wav_action.setChecked(True)
-        self._export_format_wav_action.triggered.connect(lambda: self._on_export_format_changed("wav"))
+        self._export_format_wav_action.triggered.connect(
+            lambda: self._on_export_format_changed("wav")
+        )
         format_menu.addAction(self._export_format_wav_action)
 
         self._export_format_flac_action = QAction("&FLAC", self)
         self._export_format_flac_action.setCheckable(True)
-        self._export_format_flac_action.triggered.connect(lambda: self._on_export_format_changed("flac"))
+        self._export_format_flac_action.triggered.connect(
+            lambda: self._on_export_format_changed("flac")
+        )
         format_menu.addAction(self._export_format_flac_action)
 
         # Sample rate
@@ -415,19 +429,25 @@ class MainWindow(QMainWindow):
         expand_contract_action = QAction("&Expand/Contract", self)
         expand_contract_action.setCheckable(True)
         expand_contract_action.setChecked(True)
-        expand_contract_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("expand_contract"))
+        expand_contract_action.triggered.connect(
+            lambda: self._on_duration_edit_mode_changed("expand_contract")
+        )
         duration_edits_menu.addAction(expand_contract_action)
         self._duration_edit_actions["expand_contract"] = expand_contract_action
 
         extend_from_start_action = QAction("Extend/Shorten (&From Start)", self)
         extend_from_start_action.setCheckable(True)
-        extend_from_start_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_start"))
+        extend_from_start_action.triggered.connect(
+            lambda: self._on_duration_edit_mode_changed("from_start")
+        )
         duration_edits_menu.addAction(extend_from_start_action)
         self._duration_edit_actions["from_start"] = extend_from_start_action
 
         extend_from_end_action = QAction("Extend/Shorten (From &End)", self)
         extend_from_end_action.setCheckable(True)
-        extend_from_end_action.triggered.connect(lambda: self._on_duration_edit_mode_changed("from_end"))
+        extend_from_end_action.triggered.connect(
+            lambda: self._on_duration_edit_mode_changed("from_end")
+        )
         duration_edits_menu.addAction(extend_from_end_action)
         self._duration_edit_actions["from_end"] = extend_from_end_action
 
@@ -481,7 +501,9 @@ class MainWindow(QMainWindow):
         self._ui_refresh_rate_enabled_action = QAction("Limit UI &Refresh Rate", self)
         self._ui_refresh_rate_enabled_action.setCheckable(True)
         self._ui_refresh_rate_enabled_action.setChecked(True)
-        self._ui_refresh_rate_enabled_action.toggled.connect(self._on_ui_refresh_rate_enabled_changed)
+        self._ui_refresh_rate_enabled_action.toggled.connect(
+            self._on_ui_refresh_rate_enabled_changed
+        )
         view_menu.addAction(self._ui_refresh_rate_enabled_action)
 
         refresh_rate_menu = view_menu.addMenu("Refresh &Rate")
@@ -816,7 +838,9 @@ class MainWindow(QMainWindow):
                 self._current_playing_end = end
 
                 # Update player widget with new segment info
-                self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
+                self._sample_player.set_sample(
+                    seg, index, len(self._pipeline_wrapper.current_segments)
+                )
 
                 # Adjust scrub bar position based on new segment boundaries
                 # Current media player position is relative to the old extracted segment
@@ -874,7 +898,9 @@ class MainWindow(QMainWindow):
                 self._current_playing_end = end
 
                 # Update player widget with new segment info
-                self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
+                self._sample_player.set_sample(
+                    seg, index, len(self._pipeline_wrapper.current_segments)
+                )
 
                 # Adjust scrub bar position based on new segment boundaries
                 # Current media player position is relative to the old extracted segment
@@ -938,7 +964,10 @@ class MainWindow(QMainWindow):
         """Update navigator markers from current segments."""
         if not self._pipeline_wrapper:
             return
-        show_disabled = getattr(self, "_show_disabled_action", None) is None or self._show_disabled_action.isChecked()
+        show_disabled = (
+            getattr(self, "_show_disabled_action", None) is None
+            or self._show_disabled_action.isChecked()
+        )
         markers = []
         for seg in self._pipeline_wrapper.current_segments:
             enabled = seg.attrs.get("enabled", True)
@@ -948,6 +977,7 @@ class MainWindow(QMainWindow):
             elif show_disabled:
                 # Dim gray for disabled markers
                 from PySide6.QtGui import QColor
+
                 markers.append((seg.start, seg.end, QColor(120, 120, 120, 160)))
         self._navigator.set_sample_markers(markers)
 
@@ -998,6 +1028,7 @@ class MainWindow(QMainWindow):
 
             # Extract segment to temporary file with unique filename
             import subprocess
+
             temp_dir = Path(tempfile.gettempdir())
             unique_id = uuid.uuid4().hex
             self._temp_playback_file = temp_dir / f"samplepacker_playback_{unique_id}.wav"
@@ -1008,19 +1039,27 @@ class MainWindow(QMainWindow):
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-ss", f"{start_time:.6f}",
-                "-i", str(self._current_audio_path),
-                "-t", f"{duration:.6f}",
-                "-acodec", "pcm_s16le",
-                "-ar", "44100",
-                "-ac", "2",
+                "-ss",
+                f"{start_time:.6f}",
+                "-i",
+                str(self._current_audio_path),
+                "-t",
+                f"{duration:.6f}",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
                 str(self._temp_playback_file),
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 logger.error(f"FFmpeg extraction failed: {result.stderr}")
-                QMessageBox.warning(self, "Playback Error", f"Failed to extract audio segment:\n{result.stderr}")
+                QMessageBox.warning(
+                    self, "Playback Error", f"Failed to extract audio segment:\n{result.stderr}"
+                )
                 return
 
             # Store current playing info for looping
@@ -1029,7 +1068,9 @@ class MainWindow(QMainWindow):
             self._playback_stopped = False  # Reset stop flag when starting new playback
 
             # Store paused position for resume (if applicable)
-            seek_position = self._paused_position if self._is_paused and self._paused_position > 0 else 0
+            seek_position = (
+                self._paused_position if self._is_paused and self._paused_position > 0 else 0
+            )
             was_paused = self._is_paused
             if was_paused:
                 self._is_paused = False
@@ -1046,8 +1087,13 @@ class MainWindow(QMainWindow):
                     # Check if looping is enabled
                     if self._loop_enabled and self._current_playing_index is not None:
                         # Restart playback of the same segment
-                        if self._current_playing_start is not None and self._current_playing_end is not None:
-                            self._play_segment(self._current_playing_start, self._current_playing_end)
+                        if (
+                            self._current_playing_start is not None
+                            and self._current_playing_end is not None
+                        ):
+                            self._play_segment(
+                                self._current_playing_start, self._current_playing_end
+                            )
                         return
 
                     # Not looping, clean up
@@ -1117,7 +1163,9 @@ class MainWindow(QMainWindow):
         """
         # Update view to center on clicked time
         view_duration = self._spectrogram_widget._end_time - self._spectrogram_widget._start_time
-        new_start = max(0.0, min(time - view_duration / 2, self._spectrogram_widget._duration - view_duration))
+        new_start = max(
+            0.0, min(time - view_duration / 2, self._spectrogram_widget._duration - view_duration)
+        )
         new_end = new_start + view_duration
         self._spectrogram_widget.set_time_range(new_start, new_end)
         self._navigator.set_view_range(new_start, new_end)
@@ -1174,7 +1222,9 @@ class MainWindow(QMainWindow):
         self._paused_position = 0
 
         # Reset progress bar
-        self._sample_player.set_position(0, self._sample_player._duration if hasattr(self._sample_player, '_duration') else 0)
+        self._sample_player.set_position(
+            0, self._sample_player._duration if hasattr(self._sample_player, "_duration") else 0
+        )
 
     def _on_player_next_requested(self) -> None:
         """Handle player next request."""
@@ -1217,32 +1267,32 @@ class MainWindow(QMainWindow):
 
     def _on_media_position_changed(self, position: int) -> None:
         """Handle media player position change.
-        
+
         Args:
             position: Position in milliseconds.
         """
         # Use player widget's duration if available (from actual segment), otherwise fall back to media player duration
         duration = self._media_player.duration()
-        if hasattr(self._sample_player, '_duration') and self._sample_player._duration > 0:
+        if hasattr(self._sample_player, "_duration") and self._sample_player._duration > 0:
             duration = self._sample_player._duration
         if duration > 0:
             self._sample_player.set_position(position, duration)
 
     def _on_media_duration_changed(self, duration: int) -> None:
         """Handle media player duration change.
-        
+
         Args:
             duration: Duration in milliseconds.
         """
         # Use player widget's duration if available (from actual segment), otherwise fall back to media player duration
-        if hasattr(self._sample_player, '_duration') and self._sample_player._duration > 0:
+        if hasattr(self._sample_player, "_duration") and self._sample_player._duration > 0:
             duration = self._sample_player._duration
         if duration > 0:
             self._sample_player.set_position(self._media_player.position(), duration)
 
     def _on_player_seek_requested(self, position_ms: int) -> None:
         """Handle player seek request.
-        
+
         Args:
             position_ms: Position to seek to in milliseconds.
         """
@@ -1284,7 +1334,9 @@ class MainWindow(QMainWindow):
         seg = segments[index]
         center = (seg.start + seg.end) / 2.0
         # Maintain current view duration
-        view_duration = max(0.01, self._spectrogram_widget._end_time - self._spectrogram_widget._start_time)
+        view_duration = max(
+            0.01, self._spectrogram_widget._end_time - self._spectrogram_widget._start_time
+        )
         total = max(0.0, self._spectrogram_widget._duration)
         new_start = max(0.0, min(center - (view_duration / 2.0), max(0.0, total - view_duration)))
         new_end = new_start + view_duration
@@ -1332,7 +1384,9 @@ class MainWindow(QMainWindow):
     def _on_fit_to_window(self) -> None:
         """Handle fit to window."""
         if self._spectrogram_widget._duration > 0:
-            view_duration = self._spectrogram_widget._end_time - self._spectrogram_widget._start_time
+            view_duration = (
+                self._spectrogram_widget._end_time - self._spectrogram_widget._start_time
+            )
             zoom = self._spectrogram_widget._duration / view_duration
             self._spectrogram_widget.set_zoom_level(zoom)
 
@@ -1395,7 +1449,7 @@ class MainWindow(QMainWindow):
 
     def _on_info_splitter_moved(self, pos: int, index: int) -> None:
         """Handle info table splitter moved (manual resize).
-        
+
         Args:
             pos: Splitter position.
             index: Splitter index.
@@ -1408,7 +1462,7 @@ class MainWindow(QMainWindow):
 
     def _on_player_splitter_moved(self, pos: int, index: int) -> None:
         """Handle player splitter moved (manual resize).
-        
+
         Args:
             pos: Splitter position.
             index: Splitter index.
@@ -1445,10 +1499,14 @@ class MainWindow(QMainWindow):
             seg = self._pipeline_wrapper.current_segments[index]
             if not hasattr(seg, "attrs") or seg.attrs is None:
                 seg.attrs = {}
-            seg.attrs["enabled"] = (False if disabled else True)
+            seg.attrs["enabled"] = False if disabled else True
             # Notify model
             try:
-                self._sample_table_model.setData(self._sample_table_model.index(0, index), Qt.Checked if seg.attrs["enabled"] else Qt.Unchecked, Qt.CheckStateRole)
+                self._sample_table_model.setData(
+                    self._sample_table_model.index(0, index),
+                    Qt.Checked if seg.attrs["enabled"] else Qt.Unchecked,
+                    Qt.CheckStateRole,
+                )
             except Exception:
                 pass
             self._spectrogram_widget.set_segments(self._get_display_segments())
@@ -1461,9 +1519,13 @@ class MainWindow(QMainWindow):
         for i, s in enumerate(self._pipeline_wrapper.current_segments):
             if not hasattr(s, "attrs") or s.attrs is None:
                 s.attrs = {}
-            s.attrs["enabled"] = (i == index)
+            s.attrs["enabled"] = i == index
             try:
-                self._sample_table_model.setData(self._sample_table_model.index(0, i), Qt.Checked if s.attrs["enabled"] else Qt.Unchecked, Qt.CheckStateRole)
+                self._sample_table_model.setData(
+                    self._sample_table_model.index(0, i),
+                    Qt.Checked if s.attrs["enabled"] else Qt.Unchecked,
+                    Qt.CheckStateRole,
+                )
             except Exception:
                 pass
         self._spectrogram_widget.set_segments(self._get_display_segments())
@@ -1472,7 +1534,9 @@ class MainWindow(QMainWindow):
     def _on_export_samples(self) -> None:
         """Handle export samples action."""
         if not self._pipeline_wrapper or not self._pipeline_wrapper.current_segments:
-            QMessageBox.warning(self, "No Samples", "No samples to export. Please process preview first.")
+            QMessageBox.warning(
+                self, "No Samples", "No samples to export. Please process preview first."
+            )
             return
 
         # Get output directory
@@ -1495,7 +1559,9 @@ class MainWindow(QMainWindow):
             # Export samples
             try:
                 count = self._pipeline_wrapper.export_samples(Path(output_dir), selected_indices)
-                QMessageBox.information(self, "Export Complete", f"Exported {count} samples to:\n{output_dir}")
+                QMessageBox.information(
+                    self, "Export Complete", f"Exported {count} samples to:\n{output_dir}"
+                )
                 self._status_label.setText(f"Exported {count} samples")
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Failed to export samples:\n{str(e)}")
@@ -1512,6 +1578,7 @@ class MainWindow(QMainWindow):
         """Toggle verbose logging level between DEBUG and INFO."""
         try:
             import logging
+
             root_logger = logging.getLogger()
             root_logger.setLevel(logging.DEBUG if enabled else logging.INFO)
             for handler in root_logger.handlers:
@@ -1595,7 +1662,7 @@ class MainWindow(QMainWindow):
 
     def _on_sample_drag_started(self, index: int) -> None:
         """Handle sample drag started.
-        
+
         Args:
             index: Sample index.
         """
@@ -1603,7 +1670,7 @@ class MainWindow(QMainWindow):
 
     def _on_sample_resize_started(self, index: int) -> None:
         """Handle sample resize started.
-        
+
         Args:
             index: Sample index.
         """
@@ -1645,7 +1712,9 @@ class MainWindow(QMainWindow):
         self._update_navigator_markers()
 
     def _on_model_duration_edited(self, column: int, new_duration: float) -> None:
-        if not self._pipeline_wrapper or not (0 <= column < len(self._pipeline_wrapper.current_segments)):
+        if not self._pipeline_wrapper or not (
+            0 <= column < len(self._pipeline_wrapper.current_segments)
+        ):
             return
         seg = self._pipeline_wrapper.current_segments[column]
         # Apply duration change according to current mode
@@ -1675,7 +1744,10 @@ class MainWindow(QMainWindow):
 
         When showing disabled, return all segments; otherwise only enabled.
         """
-        show_disabled = getattr(self, "_show_disabled_action", None) is None or self._show_disabled_action.isChecked()
+        show_disabled = (
+            getattr(self, "_show_disabled_action", None) is None
+            or self._show_disabled_action.isChecked()
+        )
         if show_disabled:
             return list(self._pipeline_wrapper.current_segments) if self._pipeline_wrapper else []
         return self._get_enabled_segments()
@@ -1683,7 +1755,11 @@ class MainWindow(QMainWindow):
     def _maybe_auto_reorder(self) -> None:
         """Re-order samples by start if Auto Sample Order is enabled."""
         try:
-            if getattr(self, "_auto_order_action", None) and self._auto_order_action.isChecked() and self._pipeline_wrapper:
+            if (
+                getattr(self, "_auto_order_action", None)
+                and self._auto_order_action.isChecked()
+                and self._pipeline_wrapper
+            ):
                 self._pipeline_wrapper.current_segments.sort(key=lambda s: s.start)
         except Exception:
             pass
@@ -1692,8 +1768,15 @@ class MainWindow(QMainWindow):
     def _on_export_pre_pad_settings(self) -> None:
         """Handle export pre-padding settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         value, ok = QInputDialog.getDouble(
-            self, "Export Pre-padding", "Pre-padding (ms):", self._export_pre_pad_ms, 0.0, 50000.0, 0
+            self,
+            "Export Pre-padding",
+            "Pre-padding (ms):",
+            self._export_pre_pad_ms,
+            0.0,
+            50000.0,
+            0,
         )
         if ok:
             self._export_pre_pad_ms = value
@@ -1704,8 +1787,15 @@ class MainWindow(QMainWindow):
     def _on_export_post_pad_settings(self) -> None:
         """Handle export post-padding settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         value, ok = QInputDialog.getDouble(
-            self, "Export Post-padding", "Post-padding (ms):", self._export_post_pad_ms, 0.0, 50000.0, 0
+            self,
+            "Export Post-padding",
+            "Post-padding (ms):",
+            self._export_post_pad_ms,
+            0.0,
+            50000.0,
+            0,
         )
         if ok:
             self._export_post_pad_ms = value
@@ -1726,6 +1816,7 @@ class MainWindow(QMainWindow):
     def _on_export_sample_rate_settings(self) -> None:
         """Handle export sample rate settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         current = self._export_sample_rate if self._export_sample_rate else 0
         value, ok = QInputDialog.getInt(
             self, "Export Sample Rate", "Sample rate (Hz, 0 for original):", current, 0, 192000, 0
@@ -1739,6 +1830,7 @@ class MainWindow(QMainWindow):
     def _on_export_bit_depth_settings(self) -> None:
         """Handle export bit depth settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         options = ["16", "24", "32f", "None (original)"]
         current_index = 0
         if self._export_bit_depth:
@@ -1763,6 +1855,7 @@ class MainWindow(QMainWindow):
     def _on_export_channels_settings(self) -> None:
         """Handle export channels settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         options = ["mono", "stereo", "None (original)"]
         current_index = 0
         if self._export_channels:
@@ -1810,6 +1903,7 @@ class MainWindow(QMainWindow):
     def _setup_refresh_timer(self) -> None:
         """Setup UI refresh timer."""
         from PySide6.QtCore import QTimer
+
         if self._ui_refresh_timer:
             self._ui_refresh_timer.stop()
         interval_ms = int(1000 / self._ui_refresh_rate_hz)
@@ -1840,6 +1934,7 @@ class MainWindow(QMainWindow):
     def _on_snap_interval_settings(self) -> None:
         """Handle snap interval settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         value_ms = int(self._grid_settings.snap_interval_sec * 1000)
         value_ms, ok = QInputDialog.getInt(
             self, "Snap Interval", "Snap interval (ms):", value_ms, 1, 10000, 0
@@ -1851,6 +1946,7 @@ class MainWindow(QMainWindow):
     def _on_bpm_settings(self) -> None:
         """Handle BPM settings dialog."""
         from PySide6.QtWidgets import QInputDialog
+
         value, ok = QInputDialog.getInt(
             self, "BPM", "BPM:", int(self._grid_settings.bpm), 60, 200, 0
         )
@@ -1886,7 +1982,7 @@ class MainWindow(QMainWindow):
 
     def _on_duration_edit_mode_changed(self, mode: str) -> None:
         """Handle duration edit mode change.
-        
+
         Args:
             mode: One of "expand_contract", "from_start", "from_end"
         """
@@ -1897,7 +1993,7 @@ class MainWindow(QMainWindow):
 
     def _apply_duration_change(self, seg: Segment, new_duration: float, col: int) -> None:
         """Apply duration change to segment based on selected mode.
-        
+
         Args:
             seg: Segment to modify.
             new_duration: New duration in seconds.
@@ -1905,8 +2001,11 @@ class MainWindow(QMainWindow):
         """
         old_start = seg.start
         old_end = seg.end
-        old_duration = old_end - old_start
-        audio_duration = self._spectrogram_widget._duration if hasattr(self._spectrogram_widget, '_duration') else float('inf')
+        audio_duration = (
+            self._spectrogram_widget._duration
+            if hasattr(self._spectrogram_widget, "_duration")
+            else float("inf")
+        )
 
         if self._duration_edit_mode == "expand_contract":
             # Expand/contract equally on both sides from middle
@@ -1946,4 +2045,3 @@ class MainWindow(QMainWindow):
                 duration_item.setText(f"{seg.duration():.3f}")
         finally:
             self._sample_table.blockSignals(False)
-

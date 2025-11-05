@@ -103,7 +103,11 @@ class SampleTableModel(QAbstractTableModel):
 
         if row == 0:
             if role == Qt.CheckStateRole:
-                enabled = seg.attrs.get("enabled", True) if hasattr(seg, "attrs") and seg.attrs is not None else True
+                enabled = (
+                    seg.attrs.get("enabled", True)
+                    if hasattr(seg, "attrs") and seg.attrs is not None
+                    else True
+                )
                 return Qt.Checked if enabled else Qt.Unchecked
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
@@ -183,13 +187,17 @@ class SampleTableModel(QAbstractTableModel):
                 # keep end >= start + epsilon
                 if seg.end <= seg.start:
                     seg.end = seg.start + 0.01
-                self.dataChanged.emit(self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole])
+                self.dataChanged.emit(
+                    self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
+                )
                 self.timesEdited.emit(col, seg.start, seg.end)
                 return True
             if row == 3 and role == Qt.EditRole:
                 new_end = float(value)
                 seg.end = max(seg.start + 0.01, new_end)
-                self.dataChanged.emit(self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole])
+                self.dataChanged.emit(
+                    self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
+                )
                 self.timesEdited.emit(col, seg.start, seg.end)
                 return True
             if row == 4 and role == Qt.EditRole:
@@ -197,7 +205,9 @@ class SampleTableModel(QAbstractTableModel):
                 if new_duration > 0:
                     # Let controller decide how to apply; keep start same and extend end for now
                     seg.end = seg.start + new_duration
-                    self.dataChanged.emit(self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole])
+                    self.dataChanged.emit(
+                        self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
+                    )
                     self.durationEdited.emit(col, new_duration)
                     return True
         except Exception:
@@ -230,5 +240,3 @@ class SampleTableModel(QAbstractTableModel):
         self.endInsertColumns()
         if self._visible_count >= total and self._chunk_timer:
             self._chunk_timer.stop()
-
-

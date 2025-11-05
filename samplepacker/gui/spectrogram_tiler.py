@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 from matplotlib.cm import get_cmap
+import numpy.typing as npt
+from typing import cast
 from scipy import signal
 
 logger = logging.getLogger(__name__)
@@ -79,11 +81,12 @@ class SpectrogramTiler:
         # Background executor for async tile generation
         try:
             import os
+
             max_workers = max(2, min(8, (os.cpu_count() or 4) // 2))
         except Exception:
             max_workers = 4
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="SpecTile")
-        self._cmap = get_cmap('viridis')
+        self._cmap = get_cmap("viridis")
 
     def _get_cache_key(self, audio_path: Path, start_time: float, end_time: float) -> str:
         """Generate cache key for tile.
@@ -162,6 +165,7 @@ class SpectrogramTiler:
         # Optional resample of the visible window only
         if target_sr != sr and len(audio_segment) > 0:
             from scipy.signal import resample
+
             num_samples = int(len(audio_segment) * target_sr / sr)
             audio_segment = resample(audio_segment, num_samples)
             sr = target_sr
@@ -181,9 +185,13 @@ class SpectrogramTiler:
             fmax_idx = len(frequencies)
 
             if len(frequencies) > 0:
-                logger.debug(f"Frequency filtering: original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]")
+                logger.debug(
+                    f"Frequency filtering: original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]"
+                )
             else:
-                logger.warning(f"Frequency filtering: original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]")
+                logger.warning(
+                    f"Frequency filtering: original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]"
+                )
 
             if self.fmin is not None:
                 # Use searchsorted to find the first index where frequency >= fmin
@@ -191,24 +199,34 @@ class SpectrogramTiler:
                 fmin_idx = np.searchsorted(frequencies, self.fmin)
                 if fmin_idx >= len(frequencies):
                     # All frequencies are below fmin
-                    logger.warning(f"All frequencies ({frequencies[-1]:.1f} Hz) are below fmin ({self.fmin:.1f} Hz)")
+                    logger.warning(
+                        f"All frequencies ({frequencies[-1]:.1f} Hz) are below fmin ({self.fmin:.1f} Hz)"
+                    )
                     fmin_idx = len(frequencies)  # This will result in empty slice, which is correct
                 else:
-                    logger.debug(f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz")
+                    logger.debug(
+                        f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz"
+                    )
 
             if self.fmax is not None:
                 # Use searchsorted with side='right' to find the first index where frequency > fmax
                 # This correctly handles edge cases where all frequencies are below fmax
-                fmax_idx = np.searchsorted(frequencies, self.fmax, side='right')
+                fmax_idx = np.searchsorted(frequencies, self.fmax, side="right")
                 if fmax_idx == 0:
                     # All frequencies are above fmax
-                    logger.warning(f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)")
+                    logger.warning(
+                        f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)"
+                    )
                 else:
-                    logger.debug(f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz")
+                    logger.debug(
+                        f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz"
+                    )
 
             # Validate indices before slicing
             if fmin_idx >= fmax_idx:
-                logger.warning(f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data.")
+                logger.warning(
+                    f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data."
+                )
                 # Return empty arrays when filter results in no valid range
                 frequencies = np.array([])
                 # Preserve time dimension if spectrogram has data, otherwise use empty shape
@@ -219,7 +237,9 @@ class SpectrogramTiler:
             else:
                 frequencies = frequencies[fmin_idx:fmax_idx]
                 spectrogram = spectrogram[fmin_idx:fmax_idx, :]
-                logger.debug(f"Frequency filtering applied: filtered range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, bins={len(frequencies)}")
+                logger.debug(
+                    f"Frequency filtering applied: filtered range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, bins={len(frequencies)}"
+                )
 
         # Convert to dB
         spectrogram_db = 10 * np.log10(spectrogram + 1e-10)
@@ -248,7 +268,9 @@ class SpectrogramTiler:
                 pass
         return tile
 
-    def generate_overview(self, audio_path: Path, duration: float, sample_rate: int | None = None) -> SpectrogramTile:
+    def generate_overview(
+        self, audio_path: Path, duration: float, sample_rate: int | None = None
+    ) -> SpectrogramTile:
         """Generate low-resolution overview spectrogram for entire file.
 
         Args:
@@ -297,9 +319,13 @@ class SpectrogramTiler:
             fmax_idx = len(frequencies)
 
             if len(frequencies) > 0:
-                logger.debug(f"Frequency filtering (overview): original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]")
+                logger.debug(
+                    f"Frequency filtering (overview): original range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, requested=[{self.fmin}, {self.fmax}]"
+                )
             else:
-                logger.warning(f"Frequency filtering (overview): original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]")
+                logger.warning(
+                    f"Frequency filtering (overview): original frequencies array is empty, requested=[{self.fmin}, {self.fmax}]"
+                )
 
             if self.fmin is not None:
                 # Use searchsorted to find the first index where frequency >= fmin
@@ -307,24 +333,34 @@ class SpectrogramTiler:
                 fmin_idx = np.searchsorted(frequencies, self.fmin)
                 if fmin_idx >= len(frequencies):
                     # All frequencies are below fmin
-                    logger.warning(f"All frequencies ({frequencies[-1]:.1f} Hz) are below fmin ({self.fmin:.1f} Hz)")
+                    logger.warning(
+                        f"All frequencies ({frequencies[-1]:.1f} Hz) are below fmin ({self.fmin:.1f} Hz)"
+                    )
                     fmin_idx = len(frequencies)  # This will result in empty slice, which is correct
                 else:
-                    logger.debug(f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz")
+                    logger.debug(
+                        f"fmin_idx={fmin_idx}, frequency[{fmin_idx}]={frequencies[fmin_idx]:.1f} Hz"
+                    )
 
             if self.fmax is not None:
                 # Use searchsorted with side='right' to find the first index where frequency > fmax
                 # This correctly handles edge cases where all frequencies are below fmax
-                fmax_idx = np.searchsorted(frequencies, self.fmax, side='right')
+                fmax_idx = np.searchsorted(frequencies, self.fmax, side="right")
                 if fmax_idx == 0:
                     # All frequencies are above fmax
-                    logger.warning(f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)")
+                    logger.warning(
+                        f"All frequencies ({frequencies[0]:.1f} Hz) are above fmax ({self.fmax:.1f} Hz)"
+                    )
                 else:
-                    logger.debug(f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz")
+                    logger.debug(
+                        f"fmax_idx={fmax_idx}, frequency[{fmax_idx-1}]={frequencies[fmax_idx-1]:.1f} Hz"
+                    )
 
             # Validate indices before slicing
             if fmin_idx >= fmax_idx:
-                logger.warning(f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data.")
+                logger.warning(
+                    f"Invalid frequency filter range: fmin_idx={fmin_idx}, fmax_idx={fmax_idx}. This will result in empty data."
+                )
                 # Return empty arrays when filter results in no valid range
                 frequencies = np.array([])
                 # Preserve time dimension if spectrogram has data, otherwise use empty shape
@@ -335,7 +371,9 @@ class SpectrogramTiler:
             else:
                 frequencies = frequencies[fmin_idx:fmax_idx]
                 spectrogram = spectrogram[fmin_idx:fmax_idx, :]
-                logger.debug(f"Frequency filtering applied (overview): filtered range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, bins={len(frequencies)}")
+                logger.debug(
+                    f"Frequency filtering applied (overview): filtered range=[{frequencies[0]:.1f}, {frequencies[-1]:.1f}] Hz, bins={len(frequencies)}"
+                )
 
         # Convert to dB and precompute RGBA
         spectrogram_db = 10 * np.log10(spectrogram + 1e-10)
@@ -373,7 +411,7 @@ class SpectrogramTiler:
             norm = np.clip(norm, 0.0, 1.0)
             # cmap expects (H, W) with values [0,1] and returns RGBA in [0,1]
             rgba = self._cmap(norm, bytes=True)  # returns uint8 (H, W, 4)
-            return rgba.astype(np.uint8)
+            return cast(npt.NDArray[np.uint8], rgba.astype(np.uint8))
         except Exception:
             # Fallback to zeros on any failure
             return np.zeros((*spec_db.shape, 4), dtype=np.uint8)
@@ -391,17 +429,20 @@ class SpectrogramTiler:
 
         If callback is provided, it will be called with the resulting tile in the worker's completion context.
         """
+
         def task() -> SpectrogramTile:
             return self.generate_tile(audio_path, start_time, end_time, sample_rate=sample_rate)
 
         fut = self._executor.submit(task)
         if callback is not None:
+
             def _done(f: Future) -> None:
                 try:
                     tile = f.result()
                     callback(tile)
                 except Exception:
                     pass
+
             fut.add_done_callback(_done)
         return fut
 
@@ -424,4 +465,3 @@ class SpectrogramTiler:
         # Fire-and-forget; callbacks not necessary
         self.request_tile(audio_path, left_start, left_end, sample_rate=sample_rate)
         self.request_tile(audio_path, right_start, right_end, sample_rate=sample_rate)
-

@@ -44,6 +44,7 @@ class SampleTableDelegate(QStyledItemDelegate):
 
     def editorEvent(self, event, model, option, index: QModelIndex):  # type: ignore[override]
         from PySide6.QtCore import QEvent
+
         if event.type() not in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease):
             return super().editorEvent(event, model, option, index)
         if event.type() == QEvent.MouseButtonRelease:
@@ -76,7 +77,9 @@ class SampleTableDelegate(QStyledItemDelegate):
         return super().editorEvent(event, model, option, index)
 
     # Painting helpers
-    def _paint_dual_button(self, painter: QPainter, rect: QRect, left_text: str, right_text: str) -> None:
+    def _paint_dual_button(
+        self, painter: QPainter, rect: QRect, left_text: str, right_text: str
+    ) -> None:
         left, right = self._dual_button_rects(rect)
         self._draw_button(painter, left, left_text)
         self._draw_button(painter, right, right_text)
@@ -124,5 +127,3 @@ class SampleTableDelegate(QStyledItemDelegate):
             p3 = QPoint(inner.right() - 3, inner.top() + 4)
             painter.drawLine(p1, p2)
             painter.drawLine(p2, p3)
-
-

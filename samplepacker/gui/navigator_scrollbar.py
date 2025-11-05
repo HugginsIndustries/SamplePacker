@@ -167,7 +167,9 @@ class NavigatorScrollbar(QWidget):
 
         # Draw sample markers (map times through navigator window)
         if self._sample_markers:
-            nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+            nav_duration = max(
+                1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0
+            )
             pixels_per_second = width / nav_duration if nav_duration > 0 else 0
             marker_pen = QPen()
             marker_pen.setWidth(2)
@@ -185,7 +187,9 @@ class NavigatorScrollbar(QWidget):
                 painter.drawRect(x1, 0, max(1, x2 - x1), height)
 
         # Draw view indicator using navigator window mapping
-        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        nav_duration = max(
+            1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0
+        )
         pixels_per_second = width / nav_duration if nav_duration > 0 else 0
         view_x1 = int((self._view_start_time - self._nav_start_time) * pixels_per_second)
         view_x2 = int((self._view_end_time - self._nav_start_time) * pixels_per_second)
@@ -206,7 +210,9 @@ class NavigatorScrollbar(QWidget):
 
         x = int(event.position().x())
         width = self.width()
-        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        nav_duration = max(
+            1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0
+        )
         pixels_per_second = width / nav_duration if nav_duration > 0 else 0
 
         view_x1 = int((self._view_start_time - self._nav_start_time) * pixels_per_second)
@@ -246,7 +252,9 @@ class NavigatorScrollbar(QWidget):
         """Handle mouse move for dragging/resizing and hover cursor updates."""
         x = int(event.position().x())
         width = self.width()
-        nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
+        nav_duration = max(
+            1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0
+        )
         pixels_per_second = width / nav_duration if nav_duration > 0 else 0
 
         # When not dragging/resizing, update cursor to indicate resizable edges
@@ -274,13 +282,17 @@ class NavigatorScrollbar(QWidget):
             self.view_resized.emit(new_start, self._view_end_time)
         elif self._resizing_right:
             # Resize right edge
-            new_end = max(self._view_start_time + 0.1, min(self._drag_start_view_start + dt, self._duration))
+            new_end = max(
+                self._view_start_time + 0.1, min(self._drag_start_view_start + dt, self._duration)
+            )
             self.set_view_range(self._view_start_time, new_end)
             self.view_resized.emit(self._view_start_time, new_end)
         elif self._dragging:
             # Drag view
             view_duration = self._view_end_time - self._view_start_time
-            new_start = max(0.0, min(self._drag_start_view_start + dt, self._duration - view_duration))
+            new_start = max(
+                0.0, min(self._drag_start_view_start + dt, self._duration - view_duration)
+            )
             new_end = new_start + view_duration
             self.set_view_range(new_start, new_end)
             self.view_changed.emit(new_start, new_end)
@@ -345,7 +357,11 @@ class NavigatorScrollbar(QWidget):
         # ALT-held: horizontal pan
         if event.modifiers() & Qt.KeyboardModifier.AltModifier:
             nav_start = self._nav_start_time
-            nav_end = self._nav_end_time if self._nav_end_time > self._nav_start_time else max(self._nav_start_time, self._duration)
+            nav_end = (
+                self._nav_end_time
+                if self._nav_end_time > self._nav_start_time
+                else max(self._nav_start_time, self._duration)
+            )
             nav_dur = max(1e-6, nav_end - nav_start)
             # Determine left/right: prefer vertical delta; fallback to horizontal
             if dy != 0:
@@ -370,7 +386,11 @@ class NavigatorScrollbar(QWidget):
         cursor_time = self._time_from_x(cursor_x)
 
         nav_start = self._nav_start_time
-        nav_end = self._nav_end_time if self._nav_end_time > self._nav_start_time else max(self._nav_start_time, self._duration)
+        nav_end = (
+            self._nav_end_time
+            if self._nav_end_time > self._nav_start_time
+            else max(self._nav_start_time, self._duration)
+        )
         nav_dur = max(1e-6, nav_end - nav_start)
 
         new_dur = max(0.5, min(self._duration, nav_dur / zoom))
@@ -384,4 +404,3 @@ class NavigatorScrollbar(QWidget):
         self._nav_end_time = new_end
         self.update()
         event.accept()
-

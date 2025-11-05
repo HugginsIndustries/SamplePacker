@@ -1,7 +1,8 @@
 """DSP utilities: envelopes, z-scores, windows, spectral features."""
 
-
 import numpy as np
+import numpy.typing as npt
+from typing import cast
 
 
 def rms_envelope(audio: np.ndarray, window_size: int, hop_size: int) -> np.ndarray:
@@ -39,8 +40,8 @@ def z_score_normalize(data: np.ndarray) -> np.ndarray:
     mean = np.mean(data)
     std = np.std(data)
     if std == 0:
-        return np.zeros_like(data)
-    return (data - mean) / std
+        return cast(npt.NDArray[np.float64], np.zeros_like(data))
+    return cast(npt.NDArray[np.float64], (data - mean) / std)
 
 
 def percentile_threshold(data: np.ndarray, percentile: float) -> float:
@@ -56,7 +57,9 @@ def percentile_threshold(data: np.ndarray, percentile: float) -> float:
     return float(np.percentile(data, percentile))
 
 
-def apply_hysteresis(values: np.ndarray, rise_threshold: float, fall_threshold: float) -> np.ndarray:
+def apply_hysteresis(
+    values: np.ndarray, rise_threshold: float, fall_threshold: float
+) -> np.ndarray:
     """Apply hysteresis to a binary signal.
 
     Args:

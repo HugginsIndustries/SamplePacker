@@ -186,4 +186,3 @@ class TimelineRuler(QWidget):
         from PySide6.QtCore import QSize
 
         return QSize(100, 50)
-

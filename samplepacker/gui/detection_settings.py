@@ -103,15 +103,18 @@ class DetectionSettingsPanel(QWidget):
         self._workers_spin.setRange(1, 64)
         try:
             import os
+
             default_workers = max(1, (os.cpu_count() or 4) - 1)
         except Exception:
             default_workers = 3
         # If settings already has max_workers, honor it
         existing_workers = getattr(self._settings, "max_workers", None)
         self._workers_spin.setValue(int(existing_workers or default_workers))
+
         def _on_workers_changed(v: int) -> None:
             self._settings.max_workers = int(v)
             self._on_settings_changed()
+
         self._workers_spin.valueChanged.connect(_on_workers_changed)
         layout.addRow("CPU workers:", self._workers_spin)
 
@@ -128,37 +131,55 @@ class DetectionSettingsPanel(QWidget):
         layout = QFormLayout()
 
         # Detection Pre-padding
-        self._detection_pre_pad_slider = self._create_slider_spin(0, 50000, int(self._settings.detection_pre_pad_ms), "ms")
-        self._detection_pre_pad_slider["slider"].valueChanged.connect(self._on_detection_pre_pad_changed)
+        self._detection_pre_pad_slider = self._create_slider_spin(
+            0, 50000, int(self._settings.detection_pre_pad_ms), "ms"
+        )
+        self._detection_pre_pad_slider["slider"].valueChanged.connect(
+            self._on_detection_pre_pad_changed
+        )
         layout.addRow("Detection Pre-padding:", self._detection_pre_pad_slider["widget"])
 
         # Detection Post-padding
-        self._detection_post_pad_slider = self._create_slider_spin(0, 50000, int(self._settings.detection_post_pad_ms), "ms")
-        self._detection_post_pad_slider["slider"].valueChanged.connect(self._on_detection_post_pad_changed)
+        self._detection_post_pad_slider = self._create_slider_spin(
+            0, 50000, int(self._settings.detection_post_pad_ms), "ms"
+        )
+        self._detection_post_pad_slider["slider"].valueChanged.connect(
+            self._on_detection_post_pad_changed
+        )
         layout.addRow("Detection Post-padding:", self._detection_post_pad_slider["widget"])
 
         # Merge gap
-        self._merge_gap_slider = self._create_slider_spin(0, 1000, int(self._settings.merge_gap_ms), "ms")
+        self._merge_gap_slider = self._create_slider_spin(
+            0, 1000, int(self._settings.merge_gap_ms), "ms"
+        )
         self._merge_gap_slider["slider"].valueChanged.connect(self._on_merge_gap_changed)
         layout.addRow("Merge gap:", self._merge_gap_slider["widget"])
 
         # Min duration
-        self._min_dur_slider = self._create_slider_spin(0, 5000, int(self._settings.min_dur_ms), "ms")
+        self._min_dur_slider = self._create_slider_spin(
+            0, 5000, int(self._settings.min_dur_ms), "ms"
+        )
         self._min_dur_slider["slider"].valueChanged.connect(self._on_min_dur_changed)
         layout.addRow("Min duration:", self._min_dur_slider["widget"])
 
         # Max duration
-        self._max_dur_slider = self._create_slider_spin(0, 120000, int(self._settings.max_dur_ms), "ms")
+        self._max_dur_slider = self._create_slider_spin(
+            0, 120000, int(self._settings.max_dur_ms), "ms"
+        )
         self._max_dur_slider["slider"].valueChanged.connect(self._on_max_dur_changed)
         layout.addRow("Max duration:", self._max_dur_slider["widget"])
 
         # Min gap
-        self._min_gap_slider = self._create_slider_spin(0, 60000, int(self._settings.min_gap_ms), "ms")
+        self._min_gap_slider = self._create_slider_spin(
+            0, 60000, int(self._settings.min_gap_ms), "ms"
+        )
         self._min_gap_slider["slider"].valueChanged.connect(self._on_min_gap_changed)
         layout.addRow("Min gap:", self._min_gap_slider["widget"])
 
         # Max samples
-        self._max_samples_slider = self._create_slider_spin(1, 1024, int(self._settings.max_samples), "")
+        self._max_samples_slider = self._create_slider_spin(
+            1, 1024, int(self._settings.max_samples), ""
+        )
         self._max_samples_slider["slider"].valueChanged.connect(self._on_max_samples_changed)
         layout.addRow("Max samples:", self._max_samples_slider["widget"])
 
@@ -338,4 +359,3 @@ class DetectionSettingsPanel(QWidget):
             ProcessingSettings object.
         """
         return self._settings
-

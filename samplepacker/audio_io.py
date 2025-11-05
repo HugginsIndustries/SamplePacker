@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
+from typing import Any, Dict
 
 from samplepacker.utils import compute_file_hash, ensure_dir
 
@@ -52,7 +53,7 @@ def get_audio_info(file_path: Path) -> dict:
         raise FFmpegError(f"ffprobe failed: {proc.stderr}")
     data = json.loads(proc.stdout or "{}")
     streams = data.get("streams", [])
-    astream = next((s for s in streams if s.get("codec_type") == "audio"), {})
+    astream: Dict[str, Any] = next((s for s in streams if s.get("codec_type") == "audio"), {})
     fmt = data.get("format", {})
     duration = float(fmt.get("duration", astream.get("duration", 0.0)) or 0.0)
     sr = int(astream.get("sample_rate", 0) or fmt.get("sample_rate", 0) or 0)
@@ -199,7 +200,6 @@ def extract_sample(
     logging.debug(f"Extracting sample: {start_sec:.3f}s-{end_sec:.3f}s -> {output_path}")
     duration = max(0.0, end_sec - start_sec)
     # Try stream copy first (skip for WAV to ensure precise duration)
-    tried_copy = False
     if (format or "").lower() != "wav" and not str(output_path).lower().endswith(".wav"):
         cmd_copy = [
             "ffmpeg",
@@ -215,7 +215,6 @@ def extract_sample(
             str(output_path),
         ]
         proc = subprocess.run(cmd_copy, capture_output=True, text=True)
-        tried_copy = True
         if proc.returncode == 0:
             return
     # Fallback: re-encode
@@ -308,9 +307,7 @@ def generate_spectrogram_video(
     """
     ensure_dir(output_path.parent)
     logging.debug(f"Generating spectrogram video: {input_path} -> {output_path}")
-    vf = (
-        f"showspectrum=fstart={fstart}:fstop={fstop}:size={size}:color=intensity:scale=log:legend=disabled:gain={gain_db}"
-    )
+    vf = f"showspectrum=fstart={fstart}:fstop={fstop}:size={size}:color=intensity:scale=log:legend=disabled:gain={gain_db}"
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-lavfi", vf, str(output_path)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:

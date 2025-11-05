@@ -211,7 +211,7 @@ class SamplePlayerWidget(QWidget):
 
     def set_position(self, position_ms: int, duration_ms: int) -> None:
         """Set playback position.
-        
+
         Args:
             position_ms: Current position in milliseconds.
             duration_ms: Total duration in milliseconds.
@@ -244,7 +244,7 @@ class SamplePlayerWidget(QWidget):
 
     def _on_slider_moved(self, value: int) -> None:
         """Handle slider moved during scrubbing.
-        
+
         Args:
             value: Slider value in milliseconds.
         """
@@ -349,4 +349,3 @@ class SamplePlayerWidget(QWidget):
             colors: Dictionary with color definitions.
         """
         self._theme_colors.update(colors)
-

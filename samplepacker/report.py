@@ -46,11 +46,12 @@ def create_annotated_spectrogram(
     if background_png and background_png.exists():
         import matplotlib.image as mpimg
         import numpy as np
+
         img = mpimg.imread(str(background_png))
         # FFmpeg showspectrumpic typically outputs with low freq at bottom, high at top
         # Flip the image vertically to match matplotlib's expected orientation
         img = np.flipud(img)
-        ax.imshow(img, extent=[0, dur, 0, 1], origin="lower", aspect="auto", zorder=0)
+        ax.imshow(img, extent=(0.0, float(dur), 0.0, 1.0), origin="lower", aspect="auto", zorder=0)
     ax.set_xlim(0, dur)
     ax.set_ylim(0, 1)
     # Time axis: major ticks every 60s (labeled), medium ticks every 10s (lines only), minor ticks every 2s
@@ -59,10 +60,12 @@ def create_annotated_spectrogram(
         from matplotlib.ticker import FixedFormatter, FixedLocator, MultipleLocator
 
         span = max(dur, 0.0)
-        major_ticks = np.arange(0.0, span + 1e-9, 60.0)
-        medium_ticks = np.arange(0.0, span + 1e-9, 10.0)
+        major_ticks_arr = np.arange(0.0, span + 1e-9, 60.0)
+        medium_ticks_arr = np.arange(0.0, span + 1e-9, 10.0)
 
         # Locators and formatter for ticks (ensure labels are fixed and visible)
+        major_ticks: list[float] = [float(t) for t in major_ticks_arr.tolist()]
+        medium_ticks: list[float] = [float(t) for t in medium_ticks_arr.tolist()]
         ax.xaxis.set_major_locator(FixedLocator(major_ticks))
         ax.xaxis.set_major_formatter(FixedFormatter([f"{int(t):d}" for t in major_ticks]))
         ax.xaxis.set_minor_locator(MultipleLocator(2.0))
@@ -101,7 +104,7 @@ def create_annotated_spectrogram(
             (seg_start, 0.0),
             width,
             1.0,
-            facecolor="#15ff6a",  # high-contrast green
+            facecolor=c,
             edgecolor="white",
             linewidth=1.2,
             alpha=0.35,
@@ -224,7 +227,8 @@ def save_summary_json(
         detector_stats: Statistics per detector.
         versions: Version information (ffmpeg, samplepacker, etc.).
     """
-    summary = {
+    from typing import Any as _Any, Dict as _Dict, cast as _cast
+    summary: _Dict[str, _Any] = {
         "versions": versions,
         "audio_info": audio_info,
         "settings": settings,
@@ -250,9 +254,8 @@ def save_summary_json(
     # Count by detector
     for seg in segments:
         det = seg.detector
-        summary["segments_summary"]["by_detector"][det] = (
-            summary["segments_summary"]["by_detector"].get(det, 0) + 1
-        )
+        by_detector = _cast(dict[str, int], summary["segments_summary"]["by_detector"])  # type: ignore[index]
+        by_detector[det] = by_detector.get(det, 0) + 1
 
     ensure_dir(output_path.parent)
     with open(output_path, "w", encoding="utf-8") as f:

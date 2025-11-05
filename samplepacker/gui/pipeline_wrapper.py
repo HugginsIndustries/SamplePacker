@@ -11,14 +11,16 @@ from samplepacker.pipeline import ProcessingSettings, process_file
 logger = logging.getLogger(__name__)
 
 
-def _detect_task(input_path: Path, output_dir: Path, settings: ProcessingSettings) -> dict[str, Any]:
+def _detect_task(
+    input_path: Path, output_dir: Path, settings: ProcessingSettings
+) -> dict[str, Any]:
     """Module-level task function for async detection (must be picklable).
-    
+
     Args:
         input_path: Path to input audio file.
         output_dir: Output directory for temporary files.
         settings: Processing settings.
-        
+
     Returns:
         Dictionary with processing results.
     """
@@ -100,7 +102,9 @@ class PipelineWrapper:
             logger.error(f"Failed to detect samples: {e}")
             raise
 
-    def detect_samples_async(self, output_dir: Path | None = None, callback: Any | None = None) -> Future:
+    def detect_samples_async(
+        self, output_dir: Path | None = None, callback: Any | None = None
+    ) -> Future:
         """Run sample detection in a background process and return a Future.
 
         Args:
@@ -113,6 +117,7 @@ class PipelineWrapper:
         # Create temporary output directory if not provided
         if output_dir is None:
             import tempfile
+
             output_dir = Path(tempfile.mkdtemp(prefix="samplepacker_preview_"))
 
         # Prepare settings (dry run for GUI)
@@ -125,6 +130,7 @@ class PipelineWrapper:
         if self._proc_executor is None:
             try:
                 import os
+
                 max_workers = getattr(self.settings, "max_workers", None)
                 if not isinstance(max_workers, int) or max_workers <= 0:
                     max_workers = max(1, (os.cpu_count() or 4) - 1)
@@ -132,7 +138,9 @@ class PipelineWrapper:
             except Exception:
                 self._proc_executor = ProcessPoolExecutor()
 
-        fut = self._proc_executor.submit(_detect_task, self.current_audio_path, output_dir, preview_settings)
+        fut = self._proc_executor.submit(
+            _detect_task, self.current_audio_path, output_dir, preview_settings
+        )
 
         def _done(f: Future) -> None:
             try:
@@ -162,6 +170,8 @@ class PipelineWrapper:
         """
         if not self.current_segments:
             raise ValueError("No segments available. Run process_preview first.")
+        if self.current_audio_path is None:
+            raise ValueError("No audio file loaded.")
 
         if selected_indices is None:
             selected_indices = list(range(len(self.current_segments)))
@@ -175,8 +185,10 @@ class PipelineWrapper:
                 continue
 
             segment = self.current_segments[idx]
-            base_name = self.current_audio_path.stem if self.current_audio_path else "sample"
-            filename = build_sample_filename(base_name, segment, idx, len(self.current_segments)) + ".wav"
+            base_name = self.current_audio_path.stem
+            filename = (
+                build_sample_filename(base_name, segment, idx, len(self.current_segments)) + ".wav"
+            )
             output_path = output_dir / filename
 
             try:
@@ -197,4 +209,3 @@ class PipelineWrapper:
 
         logger.info(f"Exported {exported_count} samples")
         return exported_count
-

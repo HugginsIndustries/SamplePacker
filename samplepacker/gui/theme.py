@@ -335,4 +335,3 @@ class ThemeManager(QObject):
                 background-color: {p['border_light'].name()};
             }}
         """
-

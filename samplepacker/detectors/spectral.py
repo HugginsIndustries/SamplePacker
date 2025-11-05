@@ -1,6 +1,5 @@
 """Spectral interestingness detection using multiple features."""
 
-
 import numpy as np
 
 from samplepacker.detectors.base import BaseDetector, Segment
@@ -130,8 +129,6 @@ class SpectralInterestingnessDetector(BaseDetector):
             seg_end = len(mask) * frame_sec
             if (seg_end - seg_start) * 1000.0 >= self.min_duration_ms:
                 segments.append(
-                    Segment(
-                        seg_start, seg_end, "spectral_interestingness", float(np.max(score_z))
-                    )
+                    Segment(seg_start, seg_end, "spectral_interestingness", float(np.max(score_z)))
                 )
         return segments

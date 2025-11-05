@@ -88,6 +88,7 @@ def test_build_sample_filename():
     assert "278.7s-313.6s" in filename or "278.7" in filename
     assert "transient" in filename.lower() or "flux" in filename.lower()
 
+
 def test_filename_detector_collapse():
     from samplepacker.detectors.base import Segment
 
@@ -96,6 +97,7 @@ def test_filename_detector_collapse():
     )
     name = build_sample_filename("x", seg, 0, 1)
     assert "detector-transient_flux" in name
+
 
 def test_filename_primary_detector():
     from samplepacker.detectors.base import Segment
@@ -172,21 +174,21 @@ def test_timestamps_csv_format(test_output_dir: Path):
         assert "detector" in rows[0]
         assert "score" in rows[0]
 
+
 def test_marked_spectrogram_overlay_smoke(tmp_path: Path, test_audio_file: Path):
     import matplotlib.image as mpimg
 
     from samplepacker.audio_io import generate_spectrogram_png
     from samplepacker.detectors.base import Segment
     from samplepacker.report import create_annotated_spectrogram
+
     # make clean png
     clean = tmp_path / "clean.png"
     generate_spectrogram_png(test_audio_file, clean, size="1024x256")
     # overlay with one segment
     marked = tmp_path / "marked.png"
     segs = [Segment(start=1.0, end=2.0, detector="transient_flux", score=1.0)]
-    create_annotated_spectrogram(
-        test_audio_file, marked, segs, background_png=clean, duration=12.0
-    )
+    create_annotated_spectrogram(test_audio_file, marked, segs, background_png=clean, duration=12.0)
     assert clean.exists() and marked.exists()
     a = mpimg.imread(str(clean))
     b = mpimg.imread(str(marked))

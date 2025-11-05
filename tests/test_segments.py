@@ -1,6 +1,5 @@
 """Tests for segment merge/pad/dedup logic."""
 
-
 from samplepacker.detectors.base import Segment
 from samplepacker.pipeline import (
     deduplicate_segments_after_padding,
@@ -142,6 +141,7 @@ def test_deduplicate_min_gap():
     # This test verifies the logic works
     assert len(deduped) >= 1
 
+
 def test_padding_does_not_chain_merge():
     segs = [
         Segment(start=20.0, end=20.1, detector="transient_flux", score=1.0),
@@ -164,6 +164,7 @@ def test_padding_does_not_chain_merge():
         no_merge_after_padding=True,
     )
     assert len(final) == 3
+
 
 def test_merge_only_on_raw_overlap():
     # Two hits 100ms apart should merge
@@ -195,6 +196,7 @@ def test_merge_only_on_raw_overlap():
         no_merge_after_padding=True,
     )
     assert len(final2) == 2
+
 
 def test_dedup_uses_raw_iou_not_padded():
     # Two far raw hits, heavy padding overlaps — must remain two

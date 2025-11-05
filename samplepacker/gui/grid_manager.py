@@ -188,7 +188,9 @@ class GridManager:
         snapped = self.snap_time(time)
         return abs(time - snapped) * pixel_per_second
 
-    def is_near_snap_point(self, time: float, pixel_per_second: float, tolerance_px: float = 5.0) -> bool:
+    def is_near_snap_point(
+        self, time: float, pixel_per_second: float, tolerance_px: float = 5.0
+    ) -> bool:
         """Check if time is near a snap point.
 
         Args:
@@ -201,4 +203,3 @@ class GridManager:
         """
         distance = self.get_snap_distance(time, pixel_per_second)
         return distance <= tolerance_px
-

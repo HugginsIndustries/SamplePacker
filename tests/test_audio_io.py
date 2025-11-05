@@ -20,5 +20,3 @@ def test_extract_sample_duration_bounds(tmp_path: Path):
     assert osr == sr
     got = len(data) / sr
     assert abs(got - 1.5) <= 0.05
-
-
