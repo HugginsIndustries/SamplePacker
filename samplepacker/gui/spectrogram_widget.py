@@ -840,18 +840,18 @@ class SpectrogramWidget(QWidget):
             seg = self._segments[self._selected_index]
             # Calculate delta based on initial click position (time-based for accurate cursor tracking)
             dt = time - self._drag_start_time
-            # Calculate new position from original segment position
+            # Calculate new position from original segment position, preserving duration
             original_start = self._original_segment_start if self._original_segment_start is not None else seg.start
             original_end = self._original_segment_end if self._original_segment_end is not None else seg.end
-            new_start = original_start + dt
-            new_end = original_end + dt
-            # Snap to grid if enabled
+            dur = max(0.01, original_end - original_start)
+            proposed_start = original_start + dt
+            # Snap start to grid if enabled; end follows to preserve duration
             if self._grid_manager.settings.enabled:
-                new_start = self._grid_manager.snap_time(new_start)
-                new_end = self._grid_manager.snap_time(new_end)
-            # Clamp to valid range
-            new_start = max(0.0, min(new_start, self._duration - 0.01))
-            new_end = max(new_start + 0.01, min(new_end, self._duration))
+                proposed_start = self._grid_manager.snap_time(proposed_start)
+            # Clamp so the full duration remains within audio bounds
+            max_start = max(0.0, self._duration - dur)
+            new_start = max(0.0, min(proposed_start, max_start))
+            new_end = new_start + dur
             # Store pending changes and update visual preview
             self._pending_drag_start = new_start
             self._pending_drag_end = new_end

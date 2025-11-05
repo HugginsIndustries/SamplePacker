@@ -132,7 +132,7 @@ class MainWindow(QMainWindow):
         # Grid settings (stored in main window)
         self._grid_settings = GridSettings()
         self._grid_settings.snap_interval_sec = 1.0
-        self._grid_settings.enabled = True
+        self._grid_settings.enabled = False
         
         # Export settings (stored in main window)
         self._export_pre_pad_ms = 0.0
@@ -402,6 +402,13 @@ class MainWindow(QMainWindow):
         duration_edits_menu.addAction(extend_from_end_action)
         self._duration_edit_actions["from_end"] = extend_from_end_action
 
+        # Add Lock Duration on Start Edit toggle (default ON)
+        edit_menu.addSeparator()
+        self._lock_duration_on_start_edit_action = QAction("Lock &Duration on Start Edit", self)
+        self._lock_duration_on_start_edit_action.setCheckable(True)
+        self._lock_duration_on_start_edit_action.setChecked(True)
+        edit_menu.addAction(self._lock_duration_on_start_edit_action)
+
         # View menu
         view_menu = menubar.addMenu("&View")
         zoom_in_action = QAction("Zoom &In", self)
@@ -511,7 +518,7 @@ class MainWindow(QMainWindow):
         # Snap to grid
         self._snap_enabled_action = QAction("Snap to &Grid", self)
         self._snap_enabled_action.setCheckable(True)
-        self._snap_enabled_action.setChecked(True)
+        self._snap_enabled_action.setChecked(False)
         self._snap_enabled_action.toggled.connect(self._on_snap_enabled_changed)
         grid_menu.addAction(self._snap_enabled_action)
 
@@ -1272,32 +1279,70 @@ class MainWindow(QMainWindow):
         elif row == 2:
             try:
                 new_start = float(item.text())
-                # Validate: must be >= 0 and < current end
-                if new_start >= 0 and new_start < seg.end:
-                    old_start = seg.start
-                    seg.start = new_start
-                    # Block signals to prevent recursion
-                    self._sample_table.blockSignals(True)
-                    try:
-                        # Update table to reflect any clamping
-                        item.setText(f"{seg.start:.3f}")
-                        # Update duration cell
-                        duration_item = self._sample_table.item(4, col)
-                        if duration_item:
-                            duration_item.setText(f"{seg.duration():.3f}")
-                    finally:
-                        self._sample_table.blockSignals(False)
-                    # Refresh views (without updating table again)
-                    self._maybe_auto_reorder()
-                    self._spectrogram_widget.set_segments(self._get_display_segments())
-                    self._update_navigator_markers()
+                lock_on = (
+                    getattr(self, "_lock_duration_on_start_edit_action", None)
+                    and self._lock_duration_on_start_edit_action.isChecked()
+                )
+                audio_duration = getattr(self._spectrogram_widget, "_duration", float("inf"))
+
+                if lock_on:
+                    # With Lock Duration ON, allow moving start anywhere (>=0) and move end to preserve duration
+                    if new_start >= 0:
+                        old_duration = max(0.01, seg.end - seg.start)
+                        # Clamp start to within audio bounds (leave at least 0.01s window)
+                        clamped_start = max(0.0, min(new_start, max(0.0, audio_duration - 0.01)))
+                        seg.start = clamped_start
+                        proposed_end = seg.start + old_duration
+                        seg.end = max(seg.start + 0.01, min(audio_duration, proposed_end))
+
+                        # Block signals to prevent recursion
+                        self._sample_table.blockSignals(True)
+                        try:
+                            item.setText(f"{seg.start:.3f}")
+                            end_item = self._sample_table.item(3, col)
+                            if end_item:
+                                end_item.setText(f"{seg.end:.3f}")
+                            duration_item = self._sample_table.item(4, col)
+                            if duration_item:
+                                duration_item.setText(f"{seg.duration():.3f}")
+                        finally:
+                            self._sample_table.blockSignals(False)
+
+                        # Refresh views (without updating table again)
+                        self._maybe_auto_reorder()
+                        self._spectrogram_widget.set_segments(self._get_display_segments())
+                        self._update_navigator_markers()
+                    else:
+                        # Invalid value, restore previous
+                        self._sample_table.blockSignals(True)
+                        try:
+                            item.setText(f"{seg.start:.3f}")
+                        finally:
+                            self._sample_table.blockSignals(False)
                 else:
-                    # Invalid value, restore previous
-                    self._sample_table.blockSignals(True)
-                    try:
-                        item.setText(f"{seg.start:.3f}")
-                    finally:
-                        self._sample_table.blockSignals(False)
+                    # Lock Duration OFF: enforce start < end as before
+                    if new_start >= 0 and new_start < seg.end:
+                        seg.start = new_start
+                        # Block signals to prevent recursion
+                        self._sample_table.blockSignals(True)
+                        try:
+                            item.setText(f"{seg.start:.3f}")
+                            duration_item = self._sample_table.item(4, col)
+                            if duration_item:
+                                duration_item.setText(f"{seg.duration():.3f}")
+                        finally:
+                            self._sample_table.blockSignals(False)
+                        # Refresh views (without updating table again)
+                        self._maybe_auto_reorder()
+                        self._spectrogram_widget.set_segments(self._get_display_segments())
+                        self._update_navigator_markers()
+                    else:
+                        # Invalid value, restore previous
+                        self._sample_table.blockSignals(True)
+                        try:
+                            item.setText(f"{seg.start:.3f}")
+                        finally:
+                            self._sample_table.blockSignals(False)
             except ValueError:
                 # Invalid text, restore previous
                 self._sample_table.blockSignals(True)
