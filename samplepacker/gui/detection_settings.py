@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -152,9 +153,20 @@ class DetectionSettingsPanel(QWidget):
         layout.addRow("Max duration:", self._max_dur_slider["widget"])
 
         # Min gap
-        self._min_gap_slider = self._create_slider_spin(0, 5000, int(self._settings.min_gap_ms), "ms")
+        self._min_gap_slider = self._create_slider_spin(0, 60000, int(self._settings.min_gap_ms), "ms")
         self._min_gap_slider["slider"].valueChanged.connect(self._on_min_gap_changed)
         layout.addRow("Min gap:", self._min_gap_slider["widget"])
+
+        # Max samples
+        self._max_samples_slider = self._create_slider_spin(1, 1024, int(self._settings.max_samples), "")
+        self._max_samples_slider["slider"].valueChanged.connect(self._on_max_samples_changed)
+        layout.addRow("Max samples:", self._max_samples_slider["widget"])
+
+        # Sample spread
+        self._sample_spread_checkbox = QCheckBox()
+        self._sample_spread_checkbox.setChecked(getattr(self._settings, "sample_spread", True))
+        self._sample_spread_checkbox.stateChanged.connect(self._on_sample_spread_changed)
+        layout.addRow("Sample spread:", self._sample_spread_checkbox)
 
         group.setLayout(layout)
         return group
@@ -283,6 +295,16 @@ class DetectionSettingsPanel(QWidget):
     def _on_min_gap_changed(self, value: int) -> None:
         """Handle min gap change."""
         self._settings.min_gap_ms = float(value)
+        self._on_settings_changed()
+
+    def _on_max_samples_changed(self, value: int) -> None:
+        """Handle max samples change."""
+        self._settings.max_samples = int(value)
+        self._on_settings_changed()
+
+    def _on_sample_spread_changed(self, state: int) -> None:
+        """Handle sample spread toggle change."""
+        self._settings.sample_spread = self._sample_spread_checkbox.isChecked()
         self._on_settings_changed()
 
     def _on_denoise_changed(self, method: str) -> None:

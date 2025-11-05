@@ -35,13 +35,14 @@ class ProcessingSettings:
         self.merge_gap_ms: float = kwargs.get("merge_gap_ms", 0.0)
         self.min_dur_ms: float = kwargs.get("min_dur_ms", 100.0)
         self.max_dur_ms: float = kwargs.get("max_dur_ms", 60000.0)
-        self.min_gap_ms: float = kwargs.get("min_gap_ms", 100.0)
+        self.min_gap_ms: float = kwargs.get("min_gap_ms", 1000.0)
         # Disable chain-merge after padding by default
         self.no_merge_after_padding: bool = kwargs.get("no_merge_after_padding", True)
 
         # Caps/filters
-        self.max_samples: int = kwargs.get("max_samples", 200)
+        self.max_samples: int = kwargs.get("max_samples", 256)
         self.min_snr: float = kwargs.get("min_snr", 0.0)
+        self.sample_spread: bool = kwargs.get("sample_spread", True)
 
         # Output format
         self.format: str = kwargs.get("format", "wav")
@@ -168,6 +169,73 @@ def merge_segments(
         filtered.append(seg)
 
     return filtered
+
+
+def spread_samples_across_duration(
+    segments: list[Segment],
+    max_samples: int,
+    audio_duration: float,
+) -> list[Segment]:
+    """Distribute samples evenly across the audio duration.
+    
+    Args:
+        segments: List of segments to select from (must be sorted by start time).
+        max_samples: Maximum number of samples to return.
+        audio_duration: Total audio duration in seconds.
+        
+    Returns:
+        List of segments distributed across the audio duration.
+    """
+    if not segments or max_samples <= 0 or audio_duration <= 0:
+        return []
+    
+    if len(segments) <= max_samples:
+        return segments
+    
+    # Divide audio into equal time windows
+    window_size = audio_duration / max_samples
+    selected: list[Segment] = []
+    used_indices: set[int] = set()
+    
+    for i in range(max_samples):
+        window_center = (i + 0.5) * window_size
+        
+        # Find the closest unused segment to this window center
+        best_idx = None
+        best_seg = None
+        best_distance = float('inf')
+        
+        for idx, seg in enumerate(segments):
+            if idx in used_indices:
+                continue
+            
+            # Calculate distance from segment center to window center
+            seg_center = (seg.start + seg.end) / 2.0
+            distance = abs(seg_center - window_center)
+            
+            # Prefer segments closer to window center, with score as tiebreaker
+            if best_seg is None:
+                # First candidate, always select
+                best_idx = idx
+                best_seg = seg
+                best_distance = distance
+            elif distance < best_distance:
+                # Closer segment found
+                best_idx = idx
+                best_seg = seg
+                best_distance = distance
+            elif distance == best_distance and seg.score > best_seg.score:
+                # Same distance but higher score
+                best_idx = idx
+                best_seg = seg
+        
+        # Select the best segment for this window
+        if best_seg is not None:
+            selected.append(best_seg)
+            used_indices.add(best_idx)
+    
+    # Sort selected segments by start time
+    return sorted(selected, key=lambda s: s.start)
 
 
 def deduplicate_segments_after_padding(
@@ -413,9 +481,19 @@ def process_file(
                     kept.append(cand)
             final_segments = sorted(kept, key=lambda s: (s.start, -s.score))
         # 'merge' behavior can be extended later
+    else:
+        # Ensure segments are sorted by start time for consistent behavior
+        final_segments = sorted(final_segments, key=lambda s: s.start)
 
+    # Apply max_samples limit with optional spreading
     if settings.max_samples and len(final_segments) > settings.max_samples:
-        final_segments = final_segments[: settings.max_samples]
+        audio_duration = float(audio_info.get("duration", 0.0))
+        if settings.sample_spread and audio_duration > 0:
+            final_segments = spread_samples_across_duration(
+                final_segments, settings.max_samples, audio_duration
+            )
+        else:
+            final_segments = final_segments[: settings.max_samples]
 
     # Exports
     export_timestamps_csv(final_segments, data_dir / "timestamps.csv")
