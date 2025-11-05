@@ -22,6 +22,8 @@ class NavigatorScrollbar(QWidget):
         """
         super().__init__(parent)
         self.setMinimumHeight(40)
+        # Enable hover cursor updates without mouse press
+        self.setMouseTracking(True)
         self._duration = 0.0
         self._view_start_time = 0.0
         self._view_end_time = 0.0
@@ -173,11 +175,14 @@ class NavigatorScrollbar(QWidget):
                 # Map to navigator-local coordinates
                 x1 = int((start_time - self._nav_start_time) * pixels_per_second)
                 x2 = int((end_time - self._nav_start_time) * pixels_per_second)
-                x1 = max(0, min(x1, width))
-                x2 = max(x1, min(x2, width))
-                if x2 > x1:
-                    painter.setPen(color)
-                    painter.drawRect(x1, 0, x2 - x1, height)
+                # Clamp to viewport
+                x1 = max(0, min(x1, max(0, width - 1)))
+                x2 = max(0, min(x2, width))
+                # Ensure at least 1px width so markers never disappear
+                if x2 <= x1:
+                    x2 = min(width, x1 + 1)
+                painter.setPen(color)
+                painter.drawRect(x1, 0, max(1, x2 - x1), height)
 
         # Draw view indicator using navigator window mapping
         nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
@@ -193,16 +198,6 @@ class NavigatorScrollbar(QWidget):
             painter.fillRect(view_rect, self._theme_colors["view_indicator"])
             painter.setPen(QPen(self._theme_colors["view_border"], 2))
             painter.drawRect(view_rect)
-
-            # Draw resize handles
-            handle_color = self._theme_colors["handle"]
-            handle_width = self._resize_handle_width
-            # Left handle
-            left_handle = QRect(view_x1, 0, handle_width, height)
-            painter.fillRect(left_handle, handle_color)
-            # Right handle
-            right_handle = QRect(view_x2 - handle_width, 0, handle_width, height)
-            painter.fillRect(right_handle, handle_color)
 
     def mousePressEvent(self, event) -> None:
         """Handle mouse press for dragging/resizing."""
@@ -248,14 +243,23 @@ class NavigatorScrollbar(QWidget):
             self.view_changed.emit(new_start, new_end)
 
     def mouseMoveEvent(self, event) -> None:
-        """Handle mouse move for dragging/resizing."""
-        if not (self._dragging or self._resizing_left or self._resizing_right):
-            return
-
+        """Handle mouse move for dragging/resizing and hover cursor updates."""
         x = int(event.position().x())
         width = self.width()
         nav_duration = max(1e-6, (self._nav_end_time - self._nav_start_time) if self._duration > 0 else 0.0)
         pixels_per_second = width / nav_duration if nav_duration > 0 else 0
+
+        # When not dragging/resizing, update cursor to indicate resizable edges
+        if not (self._dragging or self._resizing_left or self._resizing_right):
+            if pixels_per_second > 0:
+                view_x1 = int((self._view_start_time - self._nav_start_time) * pixels_per_second)
+                view_x2 = int((self._view_end_time - self._nav_start_time) * pixels_per_second)
+                handle_width = self._resize_handle_width
+                if abs(x - view_x1) < handle_width or abs(x - view_x2) < handle_width:
+                    self.setCursor(Qt.CursorShape.SizeHorCursor)
+                else:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
 
         if pixels_per_second <= 0:
             return
@@ -286,6 +290,11 @@ class NavigatorScrollbar(QWidget):
         self._dragging = False
         self._resizing_left = False
         self._resizing_right = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def leaveEvent(self, event) -> None:
+        """Reset cursor when leaving the widget."""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def resizeEvent(self, event) -> None:
         """Handle widget resize."""

@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from matplotlib.ticker import MaxNLocator
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QTimer
@@ -37,6 +38,8 @@ class SpectrogramWidget(QWidget):
     sample_disable_others_requested = Signal(int)  # (index)
     sample_center_requested = Signal(int)  # (index)
     sample_center_fill_requested = Signal(int)  # (index)
+    # Emitted whenever the visible time range changes (start_time, end_time)
+    view_changed = Signal(float, float)
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize spectrogram widget.
@@ -57,6 +60,12 @@ class SpectrogramWidget(QWidget):
         self._ax.spines["top"].set_color("white")
         self._ax.spines["left"].set_color("white")
         self._ax.spines["right"].set_color("white")
+        # Limit tick density to keep rendering fast on long files
+        try:
+            self._ax.xaxis.set_major_locator(MaxNLocator(nbins=10))
+            self._ax.yaxis.set_major_locator(MaxNLocator(nbins=8))
+        except Exception:
+            pass
 
         # Spectrogram data
         self._tiler = SpectrogramTiler()
@@ -164,6 +173,11 @@ class SpectrogramWidget(QWidget):
         self._start_time = max(0.0, min(start_time, self._duration))
         self._end_time = max(self._start_time, min(end_time, self._duration))
         self._update_display()
+        # Notify listeners to allow external widgets (navigator) to sync
+        try:
+            self.view_changed.emit(self._start_time, self._end_time)
+        except Exception:
+            pass
 
     def set_zoom_level(self, zoom: float) -> None:
         """Set zoom level.
@@ -297,6 +311,14 @@ class SpectrogramWidget(QWidget):
             and abs(self._current_tile.start_time - self._start_time) < 0.1
             and abs(self._current_tile.end_time - self._end_time) < 0.1
         )
+        # Clamp tick counts adaptively based on view duration
+        try:
+            view_dur = max(1e-6, self._end_time - self._start_time)
+            # Fewer ticks for very long windows to avoid MAXTICKS warnings
+            nbins = 10 if view_dur > 600 else 12
+            self._ax.xaxis.set_major_locator(MaxNLocator(nbins=nbins))
+        except Exception:
+            pass
         if current_tile_matches and self._current_tile.spectrogram.size > 0:
             try:
                 self._apply_tile_to_image(self._current_tile)
@@ -595,8 +617,8 @@ class SpectrogramWidget(QWidget):
         """
         # Make handle width relative to visible time range
         time_range = self._end_time - self._start_time
-        # Handle should be about 2% of visible range, but at least 0.01s and at most 0.5s
-        handle_width = max(0.01, min(0.5, time_range * 0.02))
+        # Tighter handles: ~0.5% of visible range, clamped to [5ms, 100ms]
+        handle_width = max(0.005, min(0.1, time_range * 0.005))
         return handle_width
 
     def _check_handle_hover(self, time: float, seg_index: int | None) -> str | None:
@@ -927,6 +949,11 @@ class SpectrogramWidget(QWidget):
         self._start_time = new_start
         self._end_time = new_start + new_dur
         self._update_display()
+        # Notify listeners
+        try:
+            self.view_changed.emit(self._start_time, self._end_time)
+        except Exception:
+            pass
 
     def eventFilter(self, obj, event) -> bool:
         """Event filter for double-click detection and ESC key cancellation.
@@ -974,6 +1001,11 @@ class SpectrogramWidget(QWidget):
                             self._start_time = new_start
                             self._end_time = new_start + view_dur
                             self._update_display()
+                            # Notify listeners
+                            try:
+                                self.view_changed.emit(self._start_time, self._end_time)
+                            except Exception:
+                                pass
                             event.accept()
                             return True
                 except Exception:

@@ -183,6 +183,8 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.sample_disable_others_requested.connect(self._on_disable_other_samples)
         self._spectrogram_widget.sample_center_requested.connect(self._on_center_clicked)
         self._spectrogram_widget.sample_center_fill_requested.connect(self._on_fill_clicked)
+        # Keep navigator highlight synced to editor zoom/pan
+        self._spectrogram_widget.view_changed.connect(lambda s, e: self._navigator.set_view_range(s, e))
 
         # Vertical splitter for player and spectrogram (resizable)
         self._player_spectro_splitter = QSplitter(Qt.Orientation.Vertical)
