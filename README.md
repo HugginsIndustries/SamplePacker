@@ -44,7 +44,7 @@ The GUI is the primary and only supported interface.
 ### From Source
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/HugginsIndustries/SpectroSampler.git
 cd SpectroSampler
 pip install -e .
 ```

@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "SpectroSampler Contributors"}
 ]
+urls = {Repository = "https://github.com/HugginsIndustries/SpectroSampler"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

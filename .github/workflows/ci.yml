@@ -66,8 +66,8 @@ jobs:
       
       - name: Run linters
         run: |
-          ruff check samplepacker tests scripts
-          mypy samplepacker --ignore-missing-imports || true
+          ruff check spectrosampler tests scripts
+          mypy spectrosampler --ignore-missing-imports || true
   
   build:
     runs-on: ubuntu-latest
@@ -94,12 +94,12 @@ jobs:
       
       - name: Build PyInstaller executable
         run: |
-          pyinstaller samplepacker.spec
+          pyinstaller spectrosampler.spec
       
       - name: Test executable
         env:
           QT_QPA_PLATFORM: offscreen
           QT_OPENGL: software
         run: |
-          ./dist/samplepacker-gui --help
+          ./dist/spectrosampler-gui --help
 
