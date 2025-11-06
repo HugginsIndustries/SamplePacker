@@ -17,7 +17,7 @@ from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
 
-from samplepacker.detectors.base import Segment
+from spectrosampler.detectors.base import Segment
 
 
 class SampleTableModel(QAbstractTableModel):

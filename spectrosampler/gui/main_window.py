@@ -1,4 +1,4 @@
-"""Main window for SamplePacker GUI."""
+"""Main window for SpectroSampler GUI."""
 
 import copy
 import logging
@@ -24,24 +24,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from samplepacker.detectors.base import Segment
-from samplepacker.gui.detection_manager import DetectionManager
-from samplepacker.gui.detection_settings import DetectionSettingsPanel
-from samplepacker.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
-from samplepacker.gui.navigator_scrollbar import NavigatorScrollbar
-from samplepacker.gui.pipeline_wrapper import PipelineWrapper
-from samplepacker.gui.sample_player import SamplePlayerWidget
-from samplepacker.gui.sample_table_delegate import SampleTableDelegate
-from samplepacker.gui.sample_table_model import SampleTableModel
-from samplepacker.gui.spectrogram_tiler import SpectrogramTiler
-from samplepacker.gui.spectrogram_widget import SpectrogramWidget
-from samplepacker.gui.theme import ThemeManager
+from spectrosampler.detectors.base import Segment
+from spectrosampler.gui.detection_manager import DetectionManager
+from spectrosampler.gui.detection_settings import DetectionSettingsPanel
+from spectrosampler.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
+from spectrosampler.gui.navigator_scrollbar import NavigatorScrollbar
+from spectrosampler.gui.pipeline_wrapper import PipelineWrapper
+from spectrosampler.gui.sample_player import SamplePlayerWidget
+from spectrosampler.gui.sample_table_delegate import SampleTableDelegate
+from spectrosampler.gui.sample_table_model import SampleTableModel
+from spectrosampler.gui.spectrogram_tiler import SpectrogramTiler
+from spectrosampler.gui.spectrogram_widget import SpectrogramWidget
+from spectrosampler.gui.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    """Main window for SamplePacker GUI."""
+    """Main window for SpectroSampler GUI."""
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize main window.
@@ -932,7 +932,7 @@ class MainWindow(QMainWindow):
             start: Start time.
             end: End time.
         """
-        from samplepacker.detectors.base import Segment
+        from spectrosampler.detectors.base import Segment
 
         # Create new segment
         seg = Segment(start=start, end=end, detector="manual", score=1.0)
@@ -1031,7 +1031,7 @@ class MainWindow(QMainWindow):
 
             temp_dir = Path(tempfile.gettempdir())
             unique_id = uuid.uuid4().hex
-            self._temp_playback_file = temp_dir / f"samplepacker_playback_{unique_id}.wav"
+            self._temp_playback_file = temp_dir / f"spectrosampler_playback_{unique_id}.wav"
 
             duration = end_time - start_time
 
@@ -1570,8 +1570,8 @@ class MainWindow(QMainWindow):
         """Handle about action."""
         QMessageBox.about(
             self,
-            "About SamplePacker",
-            "SamplePacker GUI\n\nTurn long field recordings into usable sample packs.",
+            "About SpectroSampler",
+            "SpectroSampler GUI\n\nTurn long field recordings into usable sample packs.",
         )
 
     def _on_toggle_verbose_log(self, enabled: bool) -> None:

@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from samplepacker.detectors.base import BaseDetector
-from samplepacker.dsp import percentile_threshold, z_score_normalize
+from spectrosampler.detectors.base import BaseDetector
+from spectrosampler.dsp import percentile_threshold, z_score_normalize
 
 
 def test_z_score_normalize():
@@ -56,7 +56,7 @@ def test_base_detector_init():
 
 def test_detector_name_extraction():
     """Test that detector names are extracted correctly."""
-    from samplepacker.detectors import TransientFluxDetector, VoiceVADDetector
+    from spectrosampler.detectors import TransientFluxDetector, VoiceVADDetector
 
     vad = VoiceVADDetector()
     assert vad.name == "voicevad" or "vad" in vad.name.lower()

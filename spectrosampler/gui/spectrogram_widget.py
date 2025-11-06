@@ -12,9 +12,9 @@ from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMenu, QWidget
 
-from samplepacker.detectors.base import Segment
-from samplepacker.gui.grid_manager import GridManager
-from samplepacker.gui.spectrogram_tiler import SpectrogramTiler
+from spectrosampler.detectors.base import Segment
+from spectrosampler.gui.grid_manager import GridManager
+from spectrosampler.gui.spectrogram_tiler import SpectrogramTiler
 
 logger = logging.getLogger(__name__)
 

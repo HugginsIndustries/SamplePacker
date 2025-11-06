@@ -1,4 +1,4 @@
-# SamplePacker GUI Guide
+# SpectroSampler GUI Guide
 
 ## Getting Started
 
@@ -7,13 +7,13 @@
 Launch the GUI application:
 
 ```bash
-samplepacker-gui
+spectrosampler-gui
 ```
 
 Or:
 
 ```bash
-python -m samplepacker.gui
+python -m spectrosampler.gui
 ```
 
 ### Opening Audio Files

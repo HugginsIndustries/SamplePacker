@@ -1,20 +1,20 @@
-"""Main entry point for SamplePacker GUI."""
+"""Main entry point for SpectroSampler GUI."""
 
 import logging
 import sys
 
-from samplepacker.utils import setup_logging
+from spectrosampler.utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
 def _print_help() -> None:
     print(
-        "SamplePacker GUI\n\n"
+        "SpectroSampler GUI\n\n"
         "Usage:\n"
-        "  samplepacker-gui               Launch the GUI\n"
-        "  samplepacker-gui --help        Show this help and exit\n"
-        "  samplepacker-gui --version     Show version and exit\n"
+        "  spectrosampler-gui               Launch the GUI\n"
+        "  spectrosampler-gui --help        Show this help and exit\n"
+        "  spectrosampler-gui --version     Show version and exit\n"
     )
 
 
@@ -28,23 +28,23 @@ def main() -> None:
         _print_help()
         return
     if any(arg in ("-v", "--version") for arg in sys.argv[1:]):
-        print("SamplePacker 0.1.0")
+        print("SpectroSampler 0.1.0")
         return
 
     # Import Qt and window lazily to avoid loading GUI stack when not needed
     from PySide6.QtWidgets import QApplication
 
-    from samplepacker.gui.main_window import MainWindow
+    from spectrosampler.gui.main_window import MainWindow
 
     # Create application
     app = QApplication(sys.argv)
-    app.setApplicationName("SamplePacker")
+    app.setApplicationName("SpectroSampler")
     app.setApplicationVersion("0.1.0")
-    app.setOrganizationName("SamplePacker")
+    app.setOrganizationName("SpectroSampler")
 
     # Create main window
     window = MainWindow()
-    window.setWindowTitle("SamplePacker")
+    window.setWindowTitle("SpectroSampler")
     window.resize(1400, 900)
     window.show()
 

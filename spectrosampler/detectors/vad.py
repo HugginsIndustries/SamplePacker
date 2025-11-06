@@ -7,7 +7,7 @@ try:
 except ImportError:
     webrtcvad = None  # type: ignore
 
-from samplepacker.detectors.base import BaseDetector, Segment
+from spectrosampler.detectors.base import BaseDetector, Segment
 
 
 class VoiceVADDetector(BaseDetector):

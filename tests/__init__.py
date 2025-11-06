@@ -1,1 +1,1 @@
-"""Tests for SamplePacker."""
+"""Tests for SpectroSampler."""

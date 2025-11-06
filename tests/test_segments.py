@@ -1,7 +1,7 @@
 """Tests for segment merge/pad/dedup logic."""
 
-from samplepacker.detectors.base import Segment
-from samplepacker.pipeline import (
+from spectrosampler.detectors.base import Segment
+from spectrosampler.pipeline import (
     deduplicate_segments_after_padding,
     merge_segments,
     spread_samples_across_duration,

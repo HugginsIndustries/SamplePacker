@@ -1,7 +1,7 @@
 .PHONY: help install install-dev test lint format clean build freeze run
 
 help:
-	@echo "SamplePacker Makefile"
+	@echo "SpectroSampler Makefile"
 	@echo ""
 	@echo "Targets:"
 	@echo "  install          Install package and dependencies"
@@ -24,11 +24,11 @@ test:
 	pytest -q
 
 lint:
-	ruff check samplepacker tests scripts
-	mypy samplepacker --ignore-missing-imports || true
+	ruff check spectrosampler tests scripts
+	mypy spectrosampler --ignore-missing-imports || true
 
 format:
-	black samplepacker tests scripts
+	black spectrosampler tests scripts
 
 clean:
 	rm -rf build/ dist/ *.egg-info/
@@ -41,11 +41,11 @@ build:
 	python -m build
 
 freeze:
-	pyinstaller --onefile --name samplepacker-gui \
-		--add-data "samplepacker/presets:presets" \
-		samplepacker/gui/main.py
-	@echo "Executable: dist/samplepacker-gui (or dist/samplepacker-gui.exe on Windows)"
+	pyinstaller --onefile --name spectrosampler-gui \
+		--add-data "spectrosampler/presets:presets" \
+		spectrosampler/gui/main.py
+	@echo "Executable: dist/spectrosampler-gui (or dist/spectrosampler-gui.exe on Windows)"
 
 run:
-	python -m samplepacker.gui.main
+	python -m spectrosampler.gui.main
 

@@ -7,8 +7,8 @@ from typing import Any, cast
 
 import matplotlib.pyplot as plt
 
-from samplepacker.detectors.base import Segment
-from samplepacker.utils import ensure_dir
+from spectrosampler.detectors.base import Segment
+from spectrosampler.utils import ensure_dir
 
 
 def create_annotated_spectrogram(
@@ -156,7 +156,7 @@ def create_html_report(
     html_content = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>SamplePacker Report: {base_name}</title>
+    <title>SpectroSampler Report: {base_name}</title>
     <style>
         body {{ font-family: sans-serif; margin: 20px; }}
         table {{ border-collapse: collapse; width: 100%; }}
@@ -165,7 +165,7 @@ def create_html_report(
     </style>
 </head>
 <body>
-    <h1>SamplePacker Report: {base_name}</h1>
+    <h1>SpectroSampler Report: {base_name}</h1>
     <h2>Audio Info</h2>
     <ul>
         <li>Duration: {audio_info.get('duration', 'N/A')}s</li>
@@ -226,7 +226,7 @@ def save_summary_json(
         settings: Processing settings.
         segments: List of detected segments.
         detector_stats: Statistics per detector.
-        versions: Version information (ffmpeg, samplepacker, etc.).
+        versions: Version information (ffmpeg, spectrosampler, etc.).
     """
     summary: dict[str, Any] = {
         "versions": versions,

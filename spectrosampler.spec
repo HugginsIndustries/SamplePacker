@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['samplepacker/gui/main.py'],
+    ['spectrosampler/gui/main.py'],
     pathex=[],
     binaries=[],
-    datas=[('samplepacker/presets', 'presets')],
+    datas=[('spectrosampler/presets', 'presets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='samplepacker-gui',
+    name='spectrosampler-gui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -5,7 +5,7 @@ from PySide6.QtCore import QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from samplepacker.gui.spectrogram_tiler import SpectrogramTile
+from spectrosampler.gui.spectrogram_tiler import SpectrogramTile
 
 
 class NavigatorScrollbar(QWidget):

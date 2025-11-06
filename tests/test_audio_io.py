@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from samplepacker.audio_io import extract_sample
+from spectrosampler.audio_io import extract_sample
 
 
 def test_extract_sample_duration_bounds(tmp_path: Path):

@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from samplepacker.export import build_sample_filename
-from samplepacker.utils import sanitize_filename
+from spectrosampler.export import build_sample_filename
+from spectrosampler.utils import sanitize_filename
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def test_output_dir(tmp_path: Path) -> Path:
 
 def test_build_sample_filename():
     """Test sample filename generation."""
-    from samplepacker.detectors.base import Segment
+    from spectrosampler.detectors.base import Segment
 
     seg = Segment(start=278.7, end=313.6, detector="transient_flux", score=0.85)
     filename = build_sample_filename("test_recording", seg, index=0, total=10)
@@ -90,7 +90,7 @@ def test_build_sample_filename():
 
 
 def test_filename_detector_collapse():
-    from samplepacker.detectors.base import Segment
+    from spectrosampler.detectors.base import Segment
 
     seg = Segment(
         start=1.0, end=2.0, detector="transient_flux+transient_flux+transient_flux", score=0.9
@@ -100,7 +100,7 @@ def test_filename_detector_collapse():
 
 
 def test_filename_primary_detector():
-    from samplepacker.detectors.base import Segment
+    from spectrosampler.detectors.base import Segment
 
     seg = Segment(
         start=1.0,
@@ -149,8 +149,8 @@ def test_cli_integration(test_audio_file: Path, test_output_dir: Path):
 
 def test_timestamps_csv_format(test_output_dir: Path):
     """Test that timestamps CSV has correct format."""
-    from samplepacker.detectors.base import Segment
-    from samplepacker.export import export_timestamps_csv
+    from spectrosampler.detectors.base import Segment
+    from spectrosampler.export import export_timestamps_csv
 
     segments = [
         Segment(start=1.0, end=2.0, detector="test", score=0.8),
@@ -178,9 +178,9 @@ def test_timestamps_csv_format(test_output_dir: Path):
 def test_marked_spectrogram_overlay_smoke(tmp_path: Path, test_audio_file: Path):
     import matplotlib.image as mpimg
 
-    from samplepacker.audio_io import generate_spectrogram_png
-    from samplepacker.detectors.base import Segment
-    from samplepacker.report import create_annotated_spectrogram
+    from spectrosampler.audio_io import generate_spectrogram_png
+    from spectrosampler.detectors.base import Segment
+    from spectrosampler.report import create_annotated_spectrogram
 
     # make clean png
     clean = tmp_path / "clean.png"
@@ -197,8 +197,8 @@ def test_marked_spectrogram_overlay_smoke(tmp_path: Path, test_audio_file: Path)
 
 def test_summary_json_format(test_output_dir: Path):
     """Test that summary JSON has correct structure."""
-    from samplepacker.detectors.base import Segment
-    from samplepacker.report import save_summary_json
+    from spectrosampler.detectors.base import Segment
+    from spectrosampler.report import save_summary_json
 
     segments = [
         Segment(start=1.0, end=2.0, detector="test", score=0.8),
@@ -212,7 +212,7 @@ def test_summary_json_format(test_output_dir: Path):
         settings={"mode": "auto"},
         segments=segments,
         detector_stats={"test": {"count": 2}},
-        versions={"samplepacker": "0.1.0"},
+        versions={"spectrosampler": "0.1.0"},
     )
 
     assert json_path.exists()

@@ -1,4 +1,4 @@
-# SamplePacker
+# SpectroSampler
 
 Turn long field recordings into usable sample packs with a modern GUI interface.
 
@@ -45,7 +45,7 @@ The GUI is the primary and only supported interface.
 
 ```bash
 git clone <repository-url>
-cd SamplePacker
+cd SpectroSampler
 pip install -e .
 ```
 
@@ -98,10 +98,10 @@ pip install -e ".[dev]"
 python -m pytest -q
 
 # Format code
-python -m black samplepacker tests scripts
+python -m black spectrosampler tests scripts
 
 # Lint
-python -m ruff check samplepacker tests scripts
+python -m ruff check spectrosampler tests scripts
 ```
 
 ## Quick Start
@@ -111,13 +111,13 @@ python -m ruff check samplepacker tests scripts
 Launch the GUI application:
 
 ```bash
-samplepacker-gui
+spectrosampler-gui
 ```
 
 Or:
 
 ```bash
-python -m samplepacker.gui.main
+python -m spectrosampler.gui.main
 ```
 
 1. **Open Audio File**: File → Open Audio File (or drag and drop)
@@ -134,7 +134,7 @@ python -m samplepacker.gui.main
 - **Delete**: `Delete` key
 - **Snap Toggle**: `G` key
 
-<!-- CLI removed: SamplePacker now ships GUI only -->
+<!-- CLI removed: SpectroSampler now ships GUI only -->
 
 ## GUI Usage
 
@@ -218,7 +218,7 @@ make format
 
 **Windows:**
 ```powershell
-python -m black samplepacker tests scripts
+python -m black spectrosampler tests scripts
 ```
 
 ### Linting
@@ -230,8 +230,8 @@ make lint
 
 **Windows:**
 ```powershell
-python -m ruff check samplepacker tests scripts
-python -m mypy samplepacker --ignore-missing-imports
+python -m ruff check spectrosampler tests scripts
+python -m mypy spectrosampler --ignore-missing-imports
 ```
 
 ### Troubleshooting (Windows)
@@ -249,7 +249,7 @@ make freeze
 
 **Windows:**
 ```powershell
-pyinstaller --onefile --name samplepacker-gui --add-data "samplepacker/presets;presets" samplepacker/gui/main.py
+pyinstaller --onefile --name spectrosampler-gui --add-data "spectrosampler/presets;presets" spectrosampler/gui/main.py
 ```
 
 Note: The `Makefile` is for Unix-like systems. On Windows, use PowerShell/cmd directly or install `make` via Chocolatey/WSL.

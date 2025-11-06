@@ -6,7 +6,7 @@ from typing import Any
 
 from tqdm import tqdm
 
-from samplepacker.audio_io import (
+from spectrosampler.audio_io import (
     AudioCache,
     check_ffmpeg,
     denoise_audio,
@@ -14,21 +14,21 @@ from samplepacker.audio_io import (
     get_audio_info,
     resample_for_analysis,
 )
-from samplepacker.detectors import (
+from spectrosampler.detectors import (
     NonSilenceEnergyDetector,
     Segment,
     SpectralInterestingnessDetector,
     TransientFluxDetector,
     VoiceVADDetector,
 )
-from samplepacker.export import (
+from spectrosampler.export import (
     build_sample_filename,
     export_markers_audacity,
     export_markers_reaper,
     export_sample,
     export_timestamps_csv,
 )
-from samplepacker.report import create_annotated_spectrogram, create_html_report, save_summary_json
+from spectrosampler.report import create_annotated_spectrogram, create_html_report, save_summary_json
 
 
 class ProcessingSettings:
@@ -670,7 +670,7 @@ def process_file(
         )
 
     # Summary
-    versions = {"samplepacker": "0.1.0"}
+    versions = {"spectrosampler": "0.1.0"}
     save_summary_json(
         data_dir / "summary.json", audio_info, settings.__dict__, final_segments, {}, versions
     )
@@ -698,7 +698,7 @@ class Pipeline:
         self.cache: AudioCache | None = None
         if settings.cache:
             # TODO: Initialize cache directory
-            cache_dir = Path.home() / ".samplepacker" / "cache"
+            cache_dir = Path.home() / ".spectrosampler" / "cache"
             self.cache = AudioCache(cache_dir)
 
         if not check_ffmpeg():

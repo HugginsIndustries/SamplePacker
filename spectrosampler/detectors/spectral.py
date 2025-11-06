@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from samplepacker.detectors.base import BaseDetector, Segment
-from samplepacker.dsp import (
+from spectrosampler.detectors.base import BaseDetector, Segment
+from spectrosampler.dsp import (
     percentile_threshold,
     spectral_centroid,
     spectral_flatness,

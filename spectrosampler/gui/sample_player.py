@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from samplepacker.detectors.base import Segment
+from spectrosampler.detectors.base import Segment
 
 
 class SamplePlayerWidget(QWidget):

@@ -3,9 +3,9 @@
 import logging
 from pathlib import Path
 
-from samplepacker.audio_io import extract_sample, get_audio_info
-from samplepacker.detectors.base import Segment
-from samplepacker.utils import ensure_dir, sanitize_filename
+from spectrosampler.audio_io import extract_sample, get_audio_info
+from spectrosampler.detectors.base import Segment
+from spectrosampler.utils import ensure_dir, sanitize_filename
 
 
 def build_sample_filename(

@@ -16,6 +16,8 @@ Note: Do not worry about backward compatibility for now. The program is unreleas
   - Consider using sounddevice for lower-latency playback with better looping support
   - Add crossfade option for loop transitions
   - May need to pre-load and buffer short samples differently
+- [ ] Add auto-play functionality to automatically play next sample
+  -Implement with toggle option on player widget (next to loop toggle, default off)
 
 ### Error Handling & Validation
 - [ ] Check FFmpeg availability at application startup and show user-friendly error if missing

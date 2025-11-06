@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from samplepacker.detectors.base import BaseDetector, Segment
-from samplepacker.dsp import apply_hysteresis, percentile_threshold, rms_envelope, z_score_normalize
+from spectrosampler.detectors.base import BaseDetector, Segment
+from spectrosampler.dsp import apply_hysteresis, percentile_threshold, rms_envelope, z_score_normalize
 
 
 class NonSilenceEnergyDetector(BaseDetector):

@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from samplepacker.utils import compute_file_hash, ensure_dir
+from spectrosampler.utils import compute_file_hash, ensure_dir
 
 
 class FFmpegError(Exception):

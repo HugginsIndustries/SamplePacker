@@ -3,14 +3,14 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "samplepacker"
+name = "spectrosampler"
 version = "0.1.0"
 description = "Turn long field recordings into usable sample packs"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "SamplePacker Contributors"}
+    {name = "SpectroSampler Contributors"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -47,17 +47,17 @@ dev = [
 ]
 
 [project.scripts]
-samplepacker-gui = "samplepacker.gui.main:main"
+spectrosampler-gui = "spectrosampler.gui.main:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["samplepacker*"]
+include = ["spectrosampler*"]
 exclude = ["tests*", "scripts*", "recordings*"]
 
 [tool.setuptools.package-data]
-samplepacker = ["presets/*.yaml"]
+spectrosampler = ["presets/*.yaml"]
 
 [tool.black]
 line-length = 100
@@ -75,7 +75,7 @@ ignore = ["E501", "W293"]
 
 # Qt overrides and signal names use mixedCase; also suppress B008 in Qt models
 [tool.ruff.lint.per-file-ignores]
-"samplepacker/gui/*.py" = ["N802", "N815", "B008"]
+"spectrosampler/gui/*.py" = ["N802", "N815", "B008"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -86,15 +86,15 @@ ignore_missing_imports = true
 
 # Targeted relaxations using overrides to play nicely with PySide6 and plotting
 [[tool.mypy.overrides]]
-module = ["samplepacker.gui.*"]
+module = ["spectrosampler.gui.*"]
 disable_error_code = ["attr-defined", "name-defined", "arg-type", "assignment"]
 
 [[tool.mypy.overrides]]
-module = ["samplepacker.report"]
+module = ["spectrosampler.report"]
 disable_error_code = ["arg-type", "index"]
 
 [[tool.mypy.overrides]]
-module = ["samplepacker.detectors.vad"]
+module = ["spectrosampler.detectors.vad"]
 disable_error_code = ["union-attr", "assignment"]
 
 [tool.pytest.ini_options]

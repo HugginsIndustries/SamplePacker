@@ -5,8 +5,8 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from samplepacker.detectors.base import Segment
-from samplepacker.pipeline import ProcessingSettings, process_file
+from spectrosampler.detectors.base import Segment
+from spectrosampler.pipeline import ProcessingSettings, process_file
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class PipelineWrapper:
             Dictionary with audio metadata.
         """
         try:
-            from samplepacker.audio_io import get_audio_info
+            from spectrosampler.audio_io import get_audio_info
 
             self.current_audio_path = audio_path
             self.current_audio_info = get_audio_info(audio_path)
@@ -78,7 +78,7 @@ class PipelineWrapper:
         if output_dir is None:
             import tempfile
 
-            output_dir = Path(tempfile.mkdtemp(prefix="samplepacker_preview_"))
+            output_dir = Path(tempfile.mkdtemp(prefix="spectrosampler_preview_"))
 
         # Create dry-run settings
         preview_settings = ProcessingSettings(**self.settings.__dict__)
@@ -118,7 +118,7 @@ class PipelineWrapper:
         if output_dir is None:
             import tempfile
 
-            output_dir = Path(tempfile.mkdtemp(prefix="samplepacker_preview_"))
+            output_dir = Path(tempfile.mkdtemp(prefix="spectrosampler_preview_"))
 
         # Prepare settings (dry run for GUI)
         preview_settings = ProcessingSettings(**self.settings.__dict__)
@@ -177,7 +177,7 @@ class PipelineWrapper:
             selected_indices = list(range(len(self.current_segments)))
 
         # Export selected segments
-        from samplepacker.export import build_sample_filename, export_sample
+        from spectrosampler.export import build_sample_filename, export_sample
 
         exported_count = 0
         for idx in selected_indices:
