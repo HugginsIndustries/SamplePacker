@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal
 
@@ -162,4 +161,3 @@ class OverviewManager(QObject):
         self._worker = None
         # Emit error signal (worker will be deleted via deleteLater)
         self.error.emit(error_msg)
-

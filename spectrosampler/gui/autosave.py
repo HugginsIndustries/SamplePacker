@@ -8,7 +8,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from spectrosampler.gui.project import ProjectData, save_project
+from spectrosampler.gui.project import save_project
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,9 @@ class AutoSaveManager(QObject):
             return []
 
         autosave_files = [
-            f for f in self._autosave_dir.iterdir() if f.is_file() and f.suffix == ".ssproj" and f.name.startswith("autosave_")
+            f
+            for f in self._autosave_dir.iterdir()
+            if f.is_file() and f.suffix == ".ssproj" and f.name.startswith("autosave_")
         ]
         autosave_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         return autosave_files
@@ -167,4 +169,3 @@ class AutoSaveManager(QObject):
                 logger.debug(f"Deleted auto-save file: {file_path}")
             except Exception as e:
                 logger.warning(f"Failed to delete auto-save file {file_path}: {e}")
-

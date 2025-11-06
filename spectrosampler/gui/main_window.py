@@ -26,10 +26,13 @@ from PySide6.QtWidgets import (
 )
 
 from spectrosampler.detectors.base import Segment
+from spectrosampler.gui.autosave import AutoSaveManager
 from spectrosampler.gui.detection_manager import DetectionManager
 from spectrosampler.gui.detection_settings import DetectionSettingsPanel
 from spectrosampler.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
+from spectrosampler.gui.loading_screen import LoadingScreen
 from spectrosampler.gui.navigator_scrollbar import NavigatorScrollbar
+from spectrosampler.gui.overview_manager import OverviewManager
 from spectrosampler.gui.pipeline_wrapper import PipelineWrapper
 from spectrosampler.gui.project import (
     ProjectData,
@@ -42,9 +45,6 @@ from spectrosampler.gui.project import (
     load_project,
     save_project,
 )
-from spectrosampler.gui.autosave import AutoSaveManager
-from spectrosampler.gui.loading_screen import LoadingScreen
-from spectrosampler.gui.overview_manager import OverviewManager
 from spectrosampler.gui.sample_player import SamplePlayerWidget
 from spectrosampler.gui.sample_table_delegate import SampleTableDelegate
 from spectrosampler.gui.sample_table_model import SampleTableModel
@@ -350,47 +350,47 @@ class MainWindow(QMainWindow):
 
         # File menu
         file_menu = menubar.addMenu("&File")
-        
+
         # New Project
         new_project_action = QAction("&New Project", self)
         new_project_action.setShortcut(QKeySequence.StandardKey.New)
         new_project_action.triggered.connect(self._on_new_project)
         file_menu.addAction(new_project_action)
-        
+
         # Open Project
         open_project_action = QAction("&Open Project...", self)
         open_project_action.setShortcut(QKeySequence("Ctrl+O"))
         open_project_action.triggered.connect(self._on_open_project)
         file_menu.addAction(open_project_action)
-        
+
         # Recent Projects submenu
         self._recent_projects_menu = file_menu.addMenu("Recent &Projects")
         self._recent_projects_menu.aboutToShow.connect(self._update_recent_files_menu)
         self._clear_recent_projects_action = QAction("Clear Recent Projects", self)
         self._clear_recent_projects_action.triggered.connect(self._on_clear_recent_projects)
-        
+
         # Recent Audio Files submenu
         self._recent_audio_files_menu = file_menu.addMenu("Recent &Audio Files")
         self._recent_audio_files_menu.aboutToShow.connect(self._update_recent_files_menu)
         self._clear_recent_audio_files_action = QAction("Clear Recent Audio Files", self)
         self._clear_recent_audio_files_action.triggered.connect(self._on_clear_recent_audio_files)
-        
+
         file_menu.addSeparator()
-        
+
         # Save Project
         save_project_action = QAction("&Save Project", self)
         save_project_action.setShortcut(QKeySequence.StandardKey.Save)
         save_project_action.triggered.connect(self._on_save_project)
         file_menu.addAction(save_project_action)
-        
+
         # Save Project As
         save_project_as_action = QAction("Save Project &As...", self)
         save_project_as_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         save_project_as_action.triggered.connect(self._on_save_project_as)
         file_menu.addAction(save_project_as_action)
-        
+
         file_menu.addSeparator()
-        
+
         # Open Audio File
         open_action = QAction("Open &Audio File...", self)
         open_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
@@ -666,7 +666,7 @@ class MainWindow(QMainWindow):
         # Help menu
         # Settings menu
         settings_menu = menubar.addMenu("&Settings")
-        
+
         # Auto-save settings
         autosave_menu = settings_menu.addMenu("&Auto-save")
         self._autosave_enabled_action = QAction("Enable Auto-save", self)
@@ -674,18 +674,18 @@ class MainWindow(QMainWindow):
         self._autosave_enabled_action.setChecked(self._settings_manager.get_auto_save_enabled())
         self._autosave_enabled_action.toggled.connect(self._on_autosave_enabled_changed)
         autosave_menu.addAction(self._autosave_enabled_action)
-        
+
         autosave_interval_action = QAction("Auto-save &Interval...", self)
         autosave_interval_action.triggered.connect(self._on_autosave_interval_settings)
         autosave_menu.addAction(autosave_interval_action)
-        
+
         settings_menu.addSeparator()
-        
+
         # Recent files management
         clear_recent_projects_menu_action = QAction("Clear &Recent Projects", self)
         clear_recent_projects_menu_action.triggered.connect(self._on_clear_recent_projects)
         settings_menu.addAction(clear_recent_projects_menu_action)
-        
+
         clear_recent_audio_files_menu_action = QAction("Clear Recent &Audio Files", self)
         clear_recent_audio_files_menu_action.triggered.connect(self._on_clear_recent_audio_files)
         settings_menu.addAction(clear_recent_audio_files_menu_action)
@@ -707,10 +707,10 @@ class MainWindow(QMainWindow):
         """Setup status bar."""
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        
+
         # Disable size grip to have full control over layout
         self._status_bar.setSizeGripEnabled(False)
-        
+
         # Remove separator lines via stylesheet
         self._status_bar.setStyleSheet("QStatusBar::item { border: none; }")
 
@@ -720,7 +720,7 @@ class MainWindow(QMainWindow):
         # Use addWidget with stretch to fill left half
         self._status_bar.addWidget(self._status_label, stretch=1)
 
-        # Progress bar - right half 
+        # Progress bar - right half
         self._progress_bar = QProgressBar()
         self._progress_bar.setVisible(False)
         self._progress_bar.setMinimumWidth(100)  # Minimum width for visibility
@@ -874,7 +874,7 @@ class MainWindow(QMainWindow):
             # Process events multiple times to ensure spinner is visible and animating
             for _ in range(5):
                 QApplication.processEvents()
-            
+
             audio_info = self._pipeline_wrapper.load_audio(file_path)
             self._current_audio_path = file_path
             # Process events after loading
@@ -1052,7 +1052,9 @@ class MainWindow(QMainWindow):
                     self._overview_manager.cancel()
                 self._loading_screen.hide_overlay()
                 QMessageBox.critical(
-                    self, "Error", f"Failed to load audio file:\n{str(e)}\n\nProject could not be loaded."
+                    self,
+                    "Error",
+                    f"Failed to load audio file:\n{str(e)}\n\nProject could not be loaded.",
                 )
                 logger.error(f"Failed to load audio file for project: {e}")
                 return
@@ -1068,7 +1070,9 @@ class MainWindow(QMainWindow):
                 # Update UI controls to match settings
                 self._settings_panel._mode_combo.setCurrentText(settings.mode)
                 self._settings_panel._threshold_spin.setValue(
-                    float(settings.threshold) if isinstance(settings.threshold, (int, float)) else 50.0
+                    float(settings.threshold)
+                    if isinstance(settings.threshold, (int, float))
+                    else 50.0
                 )
                 # Update other settings controls...
                 # For now, we'll just update the mode and threshold as examples
@@ -1113,7 +1117,9 @@ class MainWindow(QMainWindow):
                 self._grid_manager.settings = self._grid_settings
                 self._spectrogram_widget.set_grid_manager(self._grid_manager)
                 # Update grid menu actions
-                if hasattr(self, "_grid_mode_free_action") and hasattr(self, "_grid_mode_musical_action"):
+                if hasattr(self, "_grid_mode_free_action") and hasattr(
+                    self, "_grid_mode_musical_action"
+                ):
                     if self._grid_settings.mode == GridMode.FREE_TIME:
                         self._grid_mode_free_action.setChecked(True)
                         self._grid_mode_musical_action.setChecked(False)
@@ -1317,19 +1323,33 @@ class MainWindow(QMainWindow):
             event: Close event.
         """
         if self._project_modified:
-            reply = QMessageBox.question(
-                self,
-                "Unsaved Changes",
-                "You have unsaved changes. Do you want to save them before closing?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Unsaved Changes")
+            msg_box.setText("You have unsaved changes. Do you want to save them before closing?")
+
+            # Create custom buttons
+            save_button = msg_box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+            discard_button = msg_box.addButton(
+                "Discard Changes", QMessageBox.ButtonRole.DestructiveRole
             )
-            if reply == QMessageBox.StandardButton.Yes:
+            cancel_button = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+            # Set default button
+            msg_box.setDefaultButton(cancel_button)
+
+            msg_box.exec()
+
+            clicked_button = msg_box.clickedButton()
+
+            if clicked_button == save_button:
                 if not self.save_project():
                     event.ignore()  # User cancelled save, don't close
                     return
-            elif reply == QMessageBox.StandardButton.Cancel:
+            elif clicked_button == discard_button:
+                # Delete autosaves before closing to prevent recovery dialog
+                self._autosave_manager.cleanup_old_autosaves(keep_count=0)
+                # Allow close to proceed
+            elif clicked_button == cancel_button:
                 event.ignore()  # User cancelled close
                 return
 
@@ -1468,7 +1488,7 @@ class MainWindow(QMainWindow):
             max_count=self._settings_manager.get_max_recent_projects()
         )
         if projects:
-            for i, (path, timestamp) in enumerate(projects, 1):
+            for i, (path, _timestamp) in enumerate(projects, 1):
                 action = QAction(f"{i}. {path.stem}", self)
                 action.setData(path)
                 action.triggered.connect(lambda checked, p=path: self.load_project_file(p))
@@ -1486,7 +1506,7 @@ class MainWindow(QMainWindow):
             max_count=self._settings_manager.get_max_recent_audio_files()
         )
         if audio_files:
-            for i, (path, timestamp) in enumerate(audio_files, 1):
+            for i, (path, _timestamp) in enumerate(audio_files, 1):
                 action = QAction(f"{i}. {path.name}", self)
                 action.setData(path)
                 action.triggered.connect(lambda checked, p=path: self.load_audio_file(p))
@@ -1569,7 +1589,7 @@ class MainWindow(QMainWindow):
             error_msg: Error message.
         """
         logger.error(f"Overview generation error: {error_msg}")
-        
+
         # Hide loading screen even if overview generation failed
         # UI can still function with detail tiles only
         self._loading_screen.hide_overlay()
@@ -1601,7 +1621,7 @@ class MainWindow(QMainWindow):
         # Process events to ensure loading screen is visible
         for _ in range(3):
             QApplication.processEvents()
-        
+
         # Start detection processing
         self._detection_manager.start_detection()
 
@@ -2594,7 +2614,7 @@ class MainWindow(QMainWindow):
         if len(self._undo_stack) == 0:
             # Compare current segments with baseline
             current_segments = self._pipeline_wrapper.current_segments
-            
+
             # Handle empty baseline case (project loaded/saved with no segments)
             if len(self._baseline_segments) == 0:
                 if len(current_segments) == 0:
@@ -2602,14 +2622,14 @@ class MainWindow(QMainWindow):
                     self._project_modified = False
                     self._update_window_title()
                 return
-            
+
             # If lengths don't match, not at baseline
             if len(current_segments) != len(self._baseline_segments):
                 return
-            
+
             # Check if segments match (deep comparison with epsilon for floats)
             matches = True
-            for curr, base in zip(current_segments, self._baseline_segments):
+            for curr, base in zip(current_segments, self._baseline_segments, strict=True):
                 # Compare basic attributes with epsilon for float comparison
                 if (
                     abs(curr.start - base.start) > 1e-6
@@ -2619,14 +2639,22 @@ class MainWindow(QMainWindow):
                 ):
                     matches = False
                     break
-                
+
                 # Compare enabled state (handle missing attrs)
-                curr_enabled = curr.attrs.get("enabled", True) if hasattr(curr, "attrs") and curr.attrs else True
-                base_enabled = base.attrs.get("enabled", True) if hasattr(base, "attrs") and base.attrs else True
+                curr_enabled = (
+                    curr.attrs.get("enabled", True)
+                    if hasattr(curr, "attrs") and curr.attrs
+                    else True
+                )
+                base_enabled = (
+                    base.attrs.get("enabled", True)
+                    if hasattr(base, "attrs") and base.attrs
+                    else True
+                )
                 if curr_enabled != base_enabled:
                     matches = False
                     break
-            
+
             if matches:
                 # Segments match baseline - clear modified flag
                 # Note: This doesn't check settings, but undoing all segment changes
@@ -2680,7 +2708,9 @@ class MainWindow(QMainWindow):
 
     # Model-view callbacks
     def _on_model_enabled_toggled(self, column: int, enabled: bool) -> None:
-        if not self._pipeline_wrapper or not (0 <= column < len(self._pipeline_wrapper.current_segments)):
+        if not self._pipeline_wrapper or not (
+            0 <= column < len(self._pipeline_wrapper.current_segments)
+        ):
             return
         # Push undo state before change
         self._push_undo_state()
@@ -2699,7 +2729,9 @@ class MainWindow(QMainWindow):
         self._update_window_title()
 
     def _on_model_times_edited(self, column: int, start: float, end: float) -> None:
-        if not self._pipeline_wrapper or not (0 <= column < len(self._pipeline_wrapper.current_segments)):
+        if not self._pipeline_wrapper or not (
+            0 <= column < len(self._pipeline_wrapper.current_segments)
+        ):
             return
         # Push undo state before change
         self._push_undo_state()

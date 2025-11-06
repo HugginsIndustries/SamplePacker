@@ -2,7 +2,7 @@
   "version": "1.0",
   "spectrosampler_version": "0.1.0",
   "created": "2025-11-06T01:32:00.700707Z",
-  "modified": "2025-11-06T02:28:10.983839Z",
+  "modified": "2025-11-06T06:37:06.295885Z",
   "audio_path": "C:\\dev\\SamplePacker\\recordings\\field.WAV",
   "segments": [
     {
@@ -1523,8 +1523,8 @@
     "time_signature_denominator": 4
   },
   "ui_state": {
-    "view_start": 4363.721579877323,
-    "view_end": 4375.349981845392,
+    "view_start": 0.0,
+    "view_end": 50.00000000000006,
     "zoom_level": 32.0
   }
 }

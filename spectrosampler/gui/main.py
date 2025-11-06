@@ -68,7 +68,9 @@ def _check_autosave_recovery() -> Path | None:
         f"Would you like to recover it?"
     )
     msg.setStandardButtons(
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Discard
+        QMessageBox.StandardButton.Yes
+        | QMessageBox.StandardButton.No
+        | QMessageBox.StandardButton.Discard
     )
     msg.button(QMessageBox.StandardButton.Yes).setText("Restore")
     msg.button(QMessageBox.StandardButton.No).setText("Ignore")
@@ -105,7 +107,6 @@ def main() -> None:
     # Import Qt and window lazily to avoid loading GUI stack when not needed
     from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow
 
-    from spectrosampler.gui.autosave import AutoSaveManager
     from spectrosampler.gui.main_window import MainWindow
     from spectrosampler.gui.welcome_screen import WelcomeScreen
 

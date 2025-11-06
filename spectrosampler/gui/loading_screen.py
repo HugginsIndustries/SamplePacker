@@ -67,8 +67,12 @@ class LoadingSpinner(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
 
         path = QPainterPath()
-        path.arcMoveTo(center.x() - radius, center.y() - radius, radius * 2, radius * 2, self._angle)
-        path.arcTo(center.x() - radius, center.y() - radius, radius * 2, radius * 2, self._angle, 270)
+        path.arcMoveTo(
+            center.x() - radius, center.y() - radius, radius * 2, radius * 2, self._angle
+        )
+        path.arcTo(
+            center.x() - radius, center.y() - radius, radius * 2, radius * 2, self._angle, 270
+        )
 
         painter.drawPath(path)
 
@@ -100,25 +104,22 @@ class LoadingContainer(QWidget):
         """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Get theme colors
-        palette = self._theme_manager.palette
-        
+
         # Dark grey background with 80% opacity
         bg_color = QColor(40, 40, 40, 204)  # Darker grey, 80% opacity (204/255)
-        
+
         # Light grey outline
         outline_color = QColor(200, 200, 200, 255)  # Light grey
-        
+
         # Draw rounded rectangle background
         rect = self.rect().adjusted(0, 0, -1, -1)  # Adjust for border
         corner_radius = 15
-        
+
         # Background
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bg_color))
         painter.drawRoundedRect(rect, corner_radius, corner_radius)
-        
+
         # Outline
         pen = QPen(outline_color)
         pen.setWidth(1)
@@ -152,7 +153,7 @@ class LoadingScreen(QWidget):
 
         # Make background transparent so we can see through to the application
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        
+
         # Hide by default - only show when explicitly requested
         self.hide()
 
@@ -160,7 +161,7 @@ class LoadingScreen(QWidget):
         """Setup UI components."""
         # No layout on main widget - we'll position container absolutely
         self.setLayout(None)
-        
+
         # Container widget with rounded rectangle background
         self._container = LoadingContainer(self)
         # Hide container by default - it will be shown when overlay is shown
@@ -168,27 +169,27 @@ class LoadingScreen(QWidget):
         container_layout = QVBoxLayout()
         container_layout.setContentsMargins(40, 40, 40, 40)  # Padding inside container
         container_layout.setSpacing(20)
-        
+
         # Spinner
         self._spinner = LoadingSpinner(self._container)
         container_layout.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignCenter)
-        
+
         # Message
         self._message_label = QLabel(self._message, self._container)
         message_font = QFont()
         message_font.setPointSize(14)
         self._message_label.setFont(message_font)
         self._message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         # Add drop shadow effect for better legibility
         shadow = QGraphicsDropShadowEffect(self._message_label)
         shadow.setBlurRadius(8)
         shadow.setColor(QColor(0, 0, 0, 200))  # Black shadow with good opacity
         shadow.setOffset(2, 2)  # Offset shadow slightly
         self._message_label.setGraphicsEffect(shadow)
-        
+
         container_layout.addWidget(self._message_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        
+
         self._container.setLayout(container_layout)
 
     def _apply_theme(self) -> None:
@@ -225,22 +226,22 @@ class LoadingScreen(QWidget):
         # Update parent if changed
         if self.parent() != parent:
             self.setParent(parent)
-        
+
         # Update geometry to fill parent (always update in case parent size changed)
         self.setGeometry(0, 0, parent.width(), parent.height())
-        
+
         # Calculate container size (1/3 of window size)
         container_width = parent.width() // 3
         container_height = parent.height() // 3
-        
+
         # Ensure minimum size for readability
         container_width = max(container_width, 300)
         container_height = max(container_height, 150)
-        
+
         # Calculate centered position
         container_x = (parent.width() - container_width) // 2
         container_y = (parent.height() - container_height) // 2
-        
+
         # Ensure container exists and is properly parented and positioned
         if hasattr(self, "_container"):
             self._container.setParent(self)
@@ -248,12 +249,12 @@ class LoadingScreen(QWidget):
             self._container.setGeometry(container_x, container_y, container_width, container_height)
             self._container.show()
             self._container.raise_()
-        
+
         # Make sure main widget is on top and visible
         self.raise_()
         self.show()
         self.update()  # Force update to ensure proper rendering
-        
+
         # Start the spinner animation if not already running
         if hasattr(self, "_spinner") and hasattr(self._spinner, "_timer"):
             if not self._spinner._timer.isActive():
@@ -271,4 +272,3 @@ class LoadingScreen(QWidget):
         # Reset main widget geometry
         self.setGeometry(0, 0, 0, 0)
         self.setParent(None)
-

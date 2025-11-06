@@ -3,7 +3,6 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -134,7 +133,7 @@ class WelcomeScreen(QWidget):
     def _apply_theme(self) -> None:
         """Apply theme to welcome screen."""
         stylesheet = self._theme_manager.get_stylesheet()
-        
+
         # Add welcome screen specific styles
         palette = self._theme_manager.palette
         welcome_styles = f"""
@@ -148,7 +147,7 @@ class WelcomeScreen(QWidget):
                 background-color: {palette['accent_hover'].name()};
             }}
         """
-        
+
         self.setStyleSheet(stylesheet + welcome_styles)
 
     def _on_recent_project_double_clicked(self, item: QListWidgetItem) -> None:
@@ -238,4 +237,3 @@ class WelcomeScreen(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, path)
             item.setToolTip(str(path))  # Show full path on hover
             self._recent_audio_list.addItem(item)
-

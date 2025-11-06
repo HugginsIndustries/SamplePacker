@@ -37,7 +37,7 @@ class SettingsManager:
             timestamps = []
 
         # Pair up paths and timestamps
-        for path_str, ts_str in zip(paths[:max_count], timestamps[:max_count]):
+        for path_str, ts_str in zip(paths[:max_count], timestamps[:max_count], strict=True):
             try:
                 path = Path(path_str)
                 if path.exists():  # Only include if file still exists
@@ -105,7 +105,7 @@ class SettingsManager:
             timestamps = []
 
         # Pair up paths and timestamps
-        for path_str, ts_str in zip(paths[:max_count], timestamps[:max_count]):
+        for path_str, ts_str in zip(paths[:max_count], timestamps[:max_count], strict=True):
             try:
                 path = Path(path_str)
                 if path.exists():  # Only include if file still exists
@@ -232,15 +232,17 @@ class SettingsManager:
             Dictionary with window geometry (size, position, splitter sizes, etc.).
         """
         geometry = {}
-        
+
         # Get size as list of ints
         size = self._settings.value("windowSize", None)
         if size is not None:
             if isinstance(size, list):
-                geometry["size"] = [int(s) if s is not None else 1400 if i == 0 else 900 for i, s in enumerate(size)]
+                geometry["size"] = [
+                    int(s) if s is not None else 1400 if i == 0 else 900 for i, s in enumerate(size)
+                ]
             else:
                 geometry["size"] = size
-        
+
         # Get position as list of ints
         pos = self._settings.value("windowPosition", None)
         if pos is not None:
@@ -248,29 +250,35 @@ class SettingsManager:
                 geometry["position"] = [int(p) if p is not None else 100 for p in pos]
             else:
                 geometry["position"] = pos
-        
+
         # Get splitter sizes as lists of ints
         main_splitter = self._settings.value("mainSplitterSizes", None)
         if main_splitter is not None:
             if isinstance(main_splitter, list):
-                geometry["mainSplitterSizes"] = [int(s) if s is not None else 0 for s in main_splitter]
+                geometry["mainSplitterSizes"] = [
+                    int(s) if s is not None else 0 for s in main_splitter
+                ]
             else:
                 geometry["mainSplitterSizes"] = main_splitter
-        
+
         editor_splitter = self._settings.value("editorSplitterSizes", None)
         if editor_splitter is not None:
             if isinstance(editor_splitter, list):
-                geometry["editorSplitterSizes"] = [int(s) if s is not None else 0 for s in editor_splitter]
+                geometry["editorSplitterSizes"] = [
+                    int(s) if s is not None else 0 for s in editor_splitter
+                ]
             else:
                 geometry["editorSplitterSizes"] = editor_splitter
-        
+
         player_splitter = self._settings.value("playerSplitterSizes", None)
         if player_splitter is not None:
             if isinstance(player_splitter, list):
-                geometry["playerSplitterSizes"] = [int(s) if s is not None else 0 for s in player_splitter]
+                geometry["playerSplitterSizes"] = [
+                    int(s) if s is not None else 0 for s in player_splitter
+                ]
             else:
                 geometry["playerSplitterSizes"] = player_splitter
-        
+
         geometry["infoTableVisible"] = self._settings.value("infoTableVisible", True, type=bool)
         geometry["playerVisible"] = self._settings.value("playerVisible", True, type=bool)
         return geometry
@@ -296,4 +304,3 @@ class SettingsManager:
         if "playerVisible" in geometry:
             self._settings.setValue("playerVisible", geometry["playerVisible"])
         self._settings.sync()
-

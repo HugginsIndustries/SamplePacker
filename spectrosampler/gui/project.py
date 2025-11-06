@@ -2,7 +2,7 @@
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -169,9 +169,11 @@ def _grid_settings_to_dict(settings: GridSettings) -> dict[str, Any]:
         "visible": settings.visible,
         "snap_interval_sec": settings.snap_interval_sec,
         "bpm": settings.bpm,
-        "subdivision": settings.subdivision.value
-        if isinstance(settings.subdivision, Subdivision)
-        else settings.subdivision,
+        "subdivision": (
+            settings.subdivision.value
+            if isinstance(settings.subdivision, Subdivision)
+            else settings.subdivision
+        ),
         "time_signature_numerator": settings.time_signature_numerator,
         "time_signature_denominator": settings.time_signature_denominator,
     }
@@ -256,7 +258,7 @@ def save_project(project_data: ProjectData, path: Path) -> None:
         logger.info(f"Project saved to {path}")
     except Exception as e:
         logger.error(f"Failed to save project to {path}: {e}")
-        raise IOError(f"Failed to save project file: {e}") from e
+        raise OSError(f"Failed to save project file: {e}") from e
 
 
 def load_project(path: Path) -> ProjectData:
@@ -277,14 +279,14 @@ def load_project(path: Path) -> ProjectData:
         raise FileNotFoundError(f"Project file not found: {path}")
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data_dict = json.load(f)
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in project file {path}: {e}")
         raise ValueError(f"Invalid project file format: {e}") from e
     except Exception as e:
         logger.error(f"Failed to read project file {path}: {e}")
-        raise IOError(f"Failed to read project file: {e}") from e
+        raise OSError(f"Failed to read project file: {e}") from e
 
     # Validate version
     version = data_dict.get("version", "0.0")
@@ -319,4 +321,3 @@ def load_project(path: Path) -> ProjectData:
 
     logger.info(f"Project loaded from {path}")
     return project_data
-
