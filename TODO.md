@@ -92,21 +92,7 @@ Note: Do not worry about backward compatibility for now. The program is unreleas
   - Option to automatically remove duplicates
 
 ### Project Management
-- [ ] Implement project files (saves current "project" audio file, samples, settings, etc. to be able to exit program and resume creating sample pack)
-  - Useful for very long audio files
-  - Save format: JSON or custom format with audio path reference, all sample segments, settings, UI state
-  - Include version information for project file compatibility
-- [ ] Implement welcome screen with options to create new project or open project
-  - Show recent projects list
-  - Quick start templates
-- [ ] Add action under "File" menu: save project & load project
-  - Keyboard shortcuts: Ctrl+S to save, Ctrl+O to open
-- [ ] Add auto-save functionality
-  - Periodically save project state to temporary file
-  - Auto-recovery on crash with option to restore
-- [ ] Add recent files menu
-  - Track recently opened audio files in menu
-  - Persist across application restarts
+- None
 
 ### Settings & Configuration
 - [ ] Change max samples range to (1-10000) to match all possible file name outputs: "sample_0000"-"sample_9999"

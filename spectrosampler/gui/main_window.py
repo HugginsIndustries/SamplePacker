@@ -7,10 +7,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QPoint, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QLabel,
     QMainWindow,
@@ -30,10 +31,25 @@ from spectrosampler.gui.detection_settings import DetectionSettingsPanel
 from spectrosampler.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
 from spectrosampler.gui.navigator_scrollbar import NavigatorScrollbar
 from spectrosampler.gui.pipeline_wrapper import PipelineWrapper
+from spectrosampler.gui.project import (
+    ProjectData,
+    _dict_to_grid_settings,
+    _dict_to_processing_settings,
+    _dict_to_segment,
+    _grid_settings_to_dict,
+    _processing_settings_to_dict,
+    _segment_to_dict,
+    load_project,
+    save_project,
+)
+from spectrosampler.gui.autosave import AutoSaveManager
+from spectrosampler.gui.loading_screen import LoadingScreen
+from spectrosampler.gui.overview_manager import OverviewManager
 from spectrosampler.gui.sample_player import SamplePlayerWidget
 from spectrosampler.gui.sample_table_delegate import SampleTableDelegate
 from spectrosampler.gui.sample_table_model import SampleTableModel
-from spectrosampler.gui.spectrogram_tiler import SpectrogramTiler
+from spectrosampler.gui.settings import SettingsManager
+from spectrosampler.gui.spectrogram_tiler import SpectrogramTile, SpectrogramTiler
 from spectrosampler.gui.spectrogram_widget import SpectrogramWidget
 from spectrosampler.gui.theme import ThemeManager
 
@@ -59,6 +75,10 @@ class MainWindow(QMainWindow):
         self._pipeline_wrapper: PipelineWrapper | None = None
         self._current_audio_path: Path | None = None
 
+        # Project management
+        self._project_path: Path | None = None
+        self._project_modified: bool = False
+
         # Audio playback
         self._media_player = QMediaPlayer(self)
         self._audio_output = QAudioOutput(self)
@@ -76,6 +96,7 @@ class MainWindow(QMainWindow):
         self._undo_stack: list[list[Segment]] = []
         self._redo_stack: list[list[Segment]] = []
         self._max_undo_stack_size = 50
+        self._baseline_segments: list[Segment] = []  # Initial state after load/save
 
         # Detection manager
         self._detection_manager = DetectionManager(self)
@@ -89,10 +110,34 @@ class MainWindow(QMainWindow):
         # Grid manager
         self._grid_manager = GridManager()
 
+        # Overview manager (for background spectrogram overview generation)
+        self._overview_manager = OverviewManager(self)
+        self._overview_manager.progress.connect(self._on_overview_progress)
+        self._overview_manager.finished.connect(self._on_overview_finished)
+        self._overview_manager.error.connect(self._on_overview_error)
+
+        # Settings manager
+        self._settings_manager = SettingsManager()
+
+        # Auto-save manager
+        self._autosave_manager = AutoSaveManager(self)
+        self._autosave_manager.set_project_data_callback(self._collect_project_data)
+        self._autosave_manager.set_project_modified_callback(lambda: self._project_modified)
+        self._autosave_manager.autosave_error.connect(self._on_autosave_error)
+
         # Setup UI
         self._setup_ui()
         self._setup_menu()
         self._setup_status_bar()
+
+        # Loading screen
+        self._loading_screen = LoadingScreen(self, "Loading...")
+
+        # Setup auto-save (if enabled)
+        self._setup_autosave()
+
+        # Restore window geometry
+        self._restore_window_geometry()
 
         # Apply theme
         self._apply_theme()
@@ -103,6 +148,9 @@ class MainWindow(QMainWindow):
         # Setup UI refresh timer if enabled
         if self._ui_refresh_rate_enabled:
             self._setup_refresh_timer()
+
+        # Update window title
+        self._update_window_title()
 
     def _setup_ui(self) -> None:
         """Setup UI components."""
@@ -302,15 +350,57 @@ class MainWindow(QMainWindow):
 
         # File menu
         file_menu = menubar.addMenu("&File")
-        open_action = QAction("&Open Audio File...", self)
-        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        
+        # New Project
+        new_project_action = QAction("&New Project", self)
+        new_project_action.setShortcut(QKeySequence.StandardKey.New)
+        new_project_action.triggered.connect(self._on_new_project)
+        file_menu.addAction(new_project_action)
+        
+        # Open Project
+        open_project_action = QAction("&Open Project...", self)
+        open_project_action.setShortcut(QKeySequence("Ctrl+O"))
+        open_project_action.triggered.connect(self._on_open_project)
+        file_menu.addAction(open_project_action)
+        
+        # Recent Projects submenu
+        self._recent_projects_menu = file_menu.addMenu("Recent &Projects")
+        self._recent_projects_menu.aboutToShow.connect(self._update_recent_files_menu)
+        self._clear_recent_projects_action = QAction("Clear Recent Projects", self)
+        self._clear_recent_projects_action.triggered.connect(self._on_clear_recent_projects)
+        
+        # Recent Audio Files submenu
+        self._recent_audio_files_menu = file_menu.addMenu("Recent &Audio Files")
+        self._recent_audio_files_menu.aboutToShow.connect(self._update_recent_files_menu)
+        self._clear_recent_audio_files_action = QAction("Clear Recent Audio Files", self)
+        self._clear_recent_audio_files_action.triggered.connect(self._on_clear_recent_audio_files)
+        
+        file_menu.addSeparator()
+        
+        # Save Project
+        save_project_action = QAction("&Save Project", self)
+        save_project_action.setShortcut(QKeySequence.StandardKey.Save)
+        save_project_action.triggered.connect(self._on_save_project)
+        file_menu.addAction(save_project_action)
+        
+        # Save Project As
+        save_project_as_action = QAction("Save Project &As...", self)
+        save_project_as_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        save_project_as_action.triggered.connect(self._on_save_project_as)
+        file_menu.addAction(save_project_as_action)
+        
+        file_menu.addSeparator()
+        
+        # Open Audio File
+        open_action = QAction("Open &Audio File...", self)
+        open_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         open_action.triggered.connect(self._on_open_file)
         file_menu.addAction(open_action)
 
         file_menu.addSeparator()
 
         export_action = QAction("&Export Samples...", self)
-        export_action.setShortcut(QKeySequence.StandardKey.Save)
+        export_action.setShortcut(QKeySequence("Ctrl+E"))
         export_action.triggered.connect(self._on_export_samples)
         file_menu.addAction(export_action)
 
@@ -574,6 +664,32 @@ class MainWindow(QMainWindow):
         grid_menu.addAction(self._snap_enabled_action)
 
         # Help menu
+        # Settings menu
+        settings_menu = menubar.addMenu("&Settings")
+        
+        # Auto-save settings
+        autosave_menu = settings_menu.addMenu("&Auto-save")
+        self._autosave_enabled_action = QAction("Enable Auto-save", self)
+        self._autosave_enabled_action.setCheckable(True)
+        self._autosave_enabled_action.setChecked(self._settings_manager.get_auto_save_enabled())
+        self._autosave_enabled_action.toggled.connect(self._on_autosave_enabled_changed)
+        autosave_menu.addAction(self._autosave_enabled_action)
+        
+        autosave_interval_action = QAction("Auto-save &Interval...", self)
+        autosave_interval_action.triggered.connect(self._on_autosave_interval_settings)
+        autosave_menu.addAction(autosave_interval_action)
+        
+        settings_menu.addSeparator()
+        
+        # Recent files management
+        clear_recent_projects_menu_action = QAction("Clear &Recent Projects", self)
+        clear_recent_projects_menu_action.triggered.connect(self._on_clear_recent_projects)
+        settings_menu.addAction(clear_recent_projects_menu_action)
+        
+        clear_recent_audio_files_menu_action = QAction("Clear Recent &Audio Files", self)
+        clear_recent_audio_files_menu_action.triggered.connect(self._on_clear_recent_audio_files)
+        settings_menu.addAction(clear_recent_audio_files_menu_action)
+
         help_menu = menubar.addMenu("&Help")
 
         # Verbose Log toggle (default ON)
@@ -591,13 +707,26 @@ class MainWindow(QMainWindow):
         """Setup status bar."""
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
+        
+        # Disable size grip to have full control over layout
+        self._status_bar.setSizeGripEnabled(False)
+        
+        # Remove separator lines via stylesheet
+        self._status_bar.setStyleSheet("QStatusBar::item { border: none; }")
 
+        # Status label - left half with stretch
+        self._status_label = QLabel("Ready")
+        self._status_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        # Use addWidget with stretch to fill left half
+        self._status_bar.addWidget(self._status_label, stretch=1)
+
+        # Progress bar - right half 
         self._progress_bar = QProgressBar()
         self._progress_bar.setVisible(False)
-        self._status_bar.addPermanentWidget(self._progress_bar)
-
-        self._status_label = QLabel("Ready")
-        self._status_bar.addWidget(self._status_label)
+        self._progress_bar.setMinimumWidth(100)  # Minimum width for visibility
+        # Use addPermanentWidget for right side, but we'll control sizing via stretch
+        # Note: addPermanentWidget doesn't support stretch directly, so we'll use addWidget instead
+        self._status_bar.addWidget(self._progress_bar, stretch=1)
 
     def _connect_signals(self) -> None:
         """Connect signals."""
@@ -620,6 +749,83 @@ class MainWindow(QMainWindow):
         self._navigator.set_theme_colors(palette)
         self._spectrogram_widget.set_theme_colors(palette)
 
+    def _on_new_project(self) -> None:
+        """Handle new project action."""
+        if self._project_modified:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save them before creating a new project?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                if not self.save_project():
+                    return  # User cancelled save
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return  # User cancelled
+
+        # Clear current project
+        self._project_path = None
+        self._project_modified = False
+        self._current_audio_path = None
+        if self._pipeline_wrapper:
+            self._pipeline_wrapper.current_segments = []
+        self._spectrogram_widget.set_segments([])
+        self._update_sample_table([])
+        self._update_navigator_markers()
+        # Make sure any loading screen is hidden and properly cleaned up
+        self._loading_screen.hide_overlay()
+        # Process events to ensure UI updates
+        QApplication.processEvents()
+        self._update_window_title()
+
+    def _on_open_project(self) -> None:
+        """Handle open project action."""
+        if self._project_modified:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save them before opening a project?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                if not self.save_project():
+                    return  # User cancelled save
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return  # User cancelled
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Project",
+            "",
+            "SpectroSampler Project (*.ssproj);;All Files (*)",
+        )
+
+        if file_path:
+            self.load_project_file(Path(file_path))
+
+    def _on_save_project(self) -> None:
+        """Handle save project action."""
+        self.save_project()
+
+    def _on_save_project_as(self) -> None:
+        """Handle save project as action."""
+        path_str, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Project As",
+            "",
+            "SpectroSampler Project (*.ssproj);;All Files (*)",
+        )
+        if path_str:
+            path = Path(path_str)
+            if path.suffix != ".ssproj":
+                path = path.with_suffix(".ssproj")
+            self.save_project(path)
+
     def _on_open_file(self) -> None:
         """Handle open file action."""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -638,6 +844,18 @@ class MainWindow(QMainWindow):
         Args:
             file_path: Path to audio file.
         """
+        # Show or update loading screen (don't create duplicate if already visible)
+        if not self._loading_screen.isVisible():
+            self._loading_screen.set_message(f"Loading audio: {file_path.name}...")
+            self._loading_screen.show_overlay(self)
+            # Process events multiple times to ensure loading screen is visible
+            for _ in range(3):
+                QApplication.processEvents()
+        else:
+            # Update existing loading screen message
+            self._loading_screen.set_message(f"Loading audio: {file_path.name}...")
+            QApplication.processEvents()  # Process events to update message
+
         try:
             # Create pipeline wrapper
             settings = self._settings_panel.get_settings()
@@ -651,9 +869,17 @@ class MainWindow(QMainWindow):
             self._pipeline_wrapper = PipelineWrapper(settings)
             self._detection_manager.set_pipeline_wrapper(self._pipeline_wrapper)
 
-            # Load audio
+            # Load audio (this will block the UI thread, but we'll process events before)
+            self._loading_screen.set_message("Loading audio file...")
+            # Process events multiple times to ensure spinner is visible and animating
+            for _ in range(5):
+                QApplication.processEvents()
+            
             audio_info = self._pipeline_wrapper.load_audio(file_path)
             self._current_audio_path = file_path
+            # Process events after loading
+            for _ in range(3):
+                QApplication.processEvents()
 
             # Update UI
             duration = audio_info.get("duration", 0.0)
@@ -664,13 +890,15 @@ class MainWindow(QMainWindow):
             self._spectrogram_widget.set_time_range(0.0, min(60.0, duration))
             self._navigator.set_view_range(0.0, min(60.0, duration))
 
-            # Generate overview for navigator and main spectrogram fallback
-            overview = self._tiler.generate_overview(file_path, duration)
-            self._navigator.set_overview_tile(overview)
-            try:
-                self._spectrogram_widget.set_overview_tile(overview)
-            except Exception:
-                pass
+            # Add to recent audio files
+            self._settings_manager.add_recent_audio_file(file_path)
+            self._update_recent_files_menu()
+
+            # Start overview generation in background thread
+            self._overview_manager.start_generation(
+                self._tiler, file_path, duration, sample_rate=None
+            )
+            # Note: Overview will be applied to UI via _on_overview_finished signal
 
             # Update frequency range
             fmin = settings.hp
@@ -690,15 +918,661 @@ class MainWindow(QMainWindow):
             self._update_sample_table([])
             self._update_navigator_markers()
 
+            # Mark as modified (audio file loaded)
+            self._project_modified = True
+            self._update_window_title()
+
             # Ensure main spectrogram is visible immediately on load
             try:
                 self._spectrogram_widget.preload_current_view()
             except Exception:
                 pass
 
+            # Note: Loading screen will be hidden after overview generation completes
+            # (via _on_overview_finished or _on_overview_error)
+
         except Exception as e:
+            # Cancel overview generation if it was started
+            if self._overview_manager.is_generating():
+                self._overview_manager.cancel()
+            self._loading_screen.hide_overlay()
             QMessageBox.critical(self, "Error", f"Failed to load audio file:\n{str(e)}")
             logger.error(f"Failed to load audio file: {e}")
+
+    def _collect_project_data(self) -> ProjectData:
+        """Collect current project data from MainWindow.
+
+        Returns:
+            ProjectData object with current state.
+        """
+        from datetime import datetime
+
+        from spectrosampler.gui.project import PROJECT_VERSION, UIState
+
+        # Collect segments
+        segments = []
+        if self._pipeline_wrapper and self._pipeline_wrapper.current_segments:
+            segments = [_segment_to_dict(s) for s in self._pipeline_wrapper.current_segments]
+
+        # Collect detection settings
+        detection_settings = {}
+        if self._settings_panel:
+            settings = self._settings_panel.get_settings()
+            detection_settings = _processing_settings_to_dict(settings)
+
+        # Collect export settings
+        export_settings = {
+            "export_pre_pad_ms": self._export_pre_pad_ms,
+            "export_post_pad_ms": self._export_post_pad_ms,
+            "export_format": self._export_format,
+            "export_sample_rate": self._export_sample_rate,
+            "export_bit_depth": self._export_bit_depth,
+            "export_channels": self._export_channels,
+        }
+
+        # Collect grid settings
+        grid_settings = {}
+        if self._grid_settings:
+            grid_settings = _grid_settings_to_dict(self._grid_settings)
+
+        # Collect UI state
+        ui_state = UIState(
+            view_start=self._spectrogram_widget._start_time,
+            view_end=self._spectrogram_widget._end_time,
+            zoom_level=self._spectrogram_widget._zoom_level,
+        )
+
+        # Create project data
+        now = datetime.utcnow().isoformat() + "Z"
+        project_data = ProjectData(
+            version=PROJECT_VERSION,
+            created=now if not self._project_path else "",  # Will be set from existing file on save
+            modified=now,
+            audio_path=str(self._current_audio_path) if self._current_audio_path else "",
+            segments=segments,
+            detection_settings=detection_settings,
+            export_settings=export_settings,
+            grid_settings=grid_settings,
+            ui_state=ui_state,
+        )
+
+        return project_data
+
+    def _restore_project_data(self, data: ProjectData) -> None:
+        """Restore project data to MainWindow.
+
+        Args:
+            data: ProjectData to restore.
+        """
+        # Validate audio file exists
+        audio_path = Path(data.audio_path) if data.audio_path else None
+        if audio_path and not audio_path.exists():
+            # Try to prompt user to locate the file
+            reply = QMessageBox.question(
+                self,
+                "Audio File Not Found",
+                f"The audio file referenced in this project could not be found:\n{data.audio_path}\n\n"
+                "Would you like to locate it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                file_path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Locate Audio File",
+                    str(audio_path.parent) if audio_path.parent.exists() else "",
+                    "Audio Files (*.wav *.flac *.mp3 *.m4a *.aac);;All Files (*)",
+                )
+                if file_path:
+                    audio_path = Path(file_path)
+                else:
+                    QMessageBox.warning(
+                        self, "Cannot Load Project", "Audio file is required to load project."
+                    )
+                    return
+            else:
+                QMessageBox.warning(
+                    self, "Cannot Load Project", "Audio file is required to load project."
+                )
+                return
+
+        # Load audio file if path is provided
+        if audio_path:
+            try:
+                # Update loading message (loading screen should already be visible from load_project_file)
+                self._loading_screen.set_message(f"Loading project audio: {audio_path.name}...")
+                # Process events multiple times to ensure loading screen is visible and animating
+                for _ in range(3):
+                    QApplication.processEvents()
+                self.load_audio_file(audio_path)
+                # Note: Loading screen will be hidden after overview generation completes
+                # (via _on_overview_finished or _on_overview_error)
+            except Exception as e:
+                # Cancel overview generation if it was started
+                if self._overview_manager.is_generating():
+                    self._overview_manager.cancel()
+                self._loading_screen.hide_overlay()
+                QMessageBox.critical(
+                    self, "Error", f"Failed to load audio file:\n{str(e)}\n\nProject could not be loaded."
+                )
+                logger.error(f"Failed to load audio file for project: {e}")
+                return
+
+        # Restore detection settings
+        if data.detection_settings:
+            try:
+                settings = _dict_to_processing_settings(data.detection_settings)
+                # Update settings panel (this is tricky - we need to set values directly)
+                # The settings panel doesn't have a set_settings method, so we'll need to
+                # update the underlying _settings object
+                self._settings_panel._settings = settings
+                # Update UI controls to match settings
+                self._settings_panel._mode_combo.setCurrentText(settings.mode)
+                self._settings_panel._threshold_spin.setValue(
+                    float(settings.threshold) if isinstance(settings.threshold, (int, float)) else 50.0
+                )
+                # Update other settings controls...
+                # For now, we'll just update the mode and threshold as examples
+                # A more complete implementation would update all controls
+            except Exception as e:
+                logger.warning(f"Failed to restore detection settings: {e}")
+
+        # Restore export settings
+        if data.export_settings:
+            self._export_pre_pad_ms = float(data.export_settings.get("export_pre_pad_ms", 0.0))
+            self._export_post_pad_ms = float(data.export_settings.get("export_post_pad_ms", 0.0))
+            self._export_format = str(data.export_settings.get("export_format", "wav"))
+            self._export_sample_rate = (
+                int(data.export_settings["export_sample_rate"])
+                if data.export_settings.get("export_sample_rate") is not None
+                else None
+            )
+            self._export_bit_depth = (
+                str(data.export_settings["export_bit_depth"])
+                if data.export_settings.get("export_bit_depth") is not None
+                else None
+            )
+            self._export_channels = (
+                str(data.export_settings["export_channels"])
+                if data.export_settings.get("export_channels") is not None
+                else None
+            )
+            # Update export format menu actions
+            if self._export_format == "wav":
+                if hasattr(self, "_export_format_wav_action"):
+                    self._export_format_wav_action.setChecked(True)
+                    self._export_format_flac_action.setChecked(False)
+            elif self._export_format == "flac":
+                if hasattr(self, "_export_format_flac_action"):
+                    self._export_format_flac_action.setChecked(True)
+                    self._export_format_wav_action.setChecked(False)
+
+        # Restore grid settings
+        if data.grid_settings:
+            try:
+                self._grid_settings = _dict_to_grid_settings(data.grid_settings)
+                self._grid_manager.settings = self._grid_settings
+                self._spectrogram_widget.set_grid_manager(self._grid_manager)
+                # Update grid menu actions
+                if hasattr(self, "_grid_mode_free_action") and hasattr(self, "_grid_mode_musical_action"):
+                    if self._grid_settings.mode == GridMode.FREE_TIME:
+                        self._grid_mode_free_action.setChecked(True)
+                        self._grid_mode_musical_action.setChecked(False)
+                    elif self._grid_settings.mode == GridMode.MUSICAL_BAR:
+                        self._grid_mode_musical_action.setChecked(True)
+                        self._grid_mode_free_action.setChecked(False)
+            except Exception as e:
+                logger.warning(f"Failed to restore grid settings: {e}")
+
+        # Restore segments
+        if self._pipeline_wrapper:
+            if data.segments:
+                try:
+                    segments = [_dict_to_segment(s) for s in data.segments]
+                    self._pipeline_wrapper.current_segments = segments
+                    self._spectrogram_widget.set_segments(self._get_display_segments())
+                    self._update_sample_table(segments)
+                    self._update_navigator_markers()
+                except Exception as e:
+                    logger.warning(f"Failed to restore segments: {e}")
+            else:
+                # No segments in project - clear segments
+                self._pipeline_wrapper.current_segments = []
+                self._spectrogram_widget.set_segments([])
+                self._update_sample_table([])
+                self._update_navigator_markers()
+
+        # Restore UI state
+        if data.ui_state:
+            try:
+                # Restore view range
+                if hasattr(data.ui_state, "view_start") and hasattr(data.ui_state, "view_end"):
+                    view_start = data.ui_state.view_start
+                    view_end = data.ui_state.view_end
+                    # Ensure view is within audio duration
+                    if self._spectrogram_widget._duration > 0:
+                        view_end = min(view_end, self._spectrogram_widget._duration)
+                        view_start = max(0.0, min(view_start, view_end - 0.1))
+                        self._spectrogram_widget.set_time_range(view_start, view_end)
+                        self._navigator.set_view_range(view_start, view_end)
+                # Restore zoom level
+                if hasattr(data.ui_state, "zoom_level"):
+                    self._spectrogram_widget.set_zoom_level(data.ui_state.zoom_level)
+            except Exception as e:
+                logger.warning(f"Failed to restore UI state: {e}")
+
+        # Clear modified flag, clear undo/redo stacks, and set baseline
+        self._project_modified = False
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        if self._pipeline_wrapper:
+            self._baseline_segments = copy.deepcopy(self._pipeline_wrapper.current_segments)
+        else:
+            self._baseline_segments = []
+        self._update_window_title()
+
+    def save_project(self, path: Path | None = None) -> bool:
+        """Save current project to file.
+
+        Args:
+            path: Path to save project. If None, uses current project path or prompts.
+
+        Returns:
+            True if saved successfully, False otherwise.
+        """
+        if path is None:
+            path = self._project_path
+            if path is None:
+                # Generate recommended filename based on date and audio file
+                from datetime import datetime
+
+                recommended_name = "project.ssproj"
+                if self._current_audio_path:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    audio_name = self._current_audio_path.stem
+                    recommended_name = f"{date_str}_{audio_name}.ssproj"
+
+                # Prompt for save location
+                path_str, _ = QFileDialog.getSaveFileName(
+                    self,
+                    "Save Project",
+                    recommended_name,
+                    "SpectroSampler Project (*.ssproj);;All Files (*)",
+                )
+                if not path_str:
+                    return False
+                path = Path(path_str)
+                # Ensure .ssproj extension
+                if path.suffix != ".ssproj":
+                    path = path.with_suffix(".ssproj")
+
+        try:
+            # Collect project data
+            project_data = self._collect_project_data()
+
+            # If this is a new project, set created timestamp
+            if not self._project_path or self._project_path != path:
+                from datetime import datetime
+
+                project_data.created = datetime.utcnow().isoformat() + "Z"
+            else:
+                # Preserve created timestamp from existing project
+                try:
+                    existing_data = load_project(path)
+                    project_data.created = existing_data.created
+                except Exception:
+                    # If we can't load existing, use current time
+                    from datetime import datetime
+
+                    project_data.created = datetime.utcnow().isoformat() + "Z"
+
+            # Save project
+            save_project(project_data, path)
+
+            # Update project path, clear modified flag, clear undo/redo stacks, and set baseline
+            self._project_path = path
+            self._project_modified = False
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+            if self._pipeline_wrapper:
+                self._baseline_segments = copy.deepcopy(self._pipeline_wrapper.current_segments)
+            else:
+                self._baseline_segments = []
+            self._update_window_title()
+
+            # Add to recent projects
+            self._settings_manager.add_recent_project(path)
+            self._update_recent_files_menu()
+
+            # Clean up auto-save files (project is now saved)
+            self._autosave_manager.cleanup_old_autosaves(keep_count=0)
+
+            logger.info(f"Project saved to {path}")
+            return True
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save project:\n{str(e)}")
+            logger.error(f"Failed to save project: {e}")
+            return False
+
+    def load_project_file(self, path: Path) -> bool:
+        """Load project from file.
+
+        Args:
+            path: Path to project file.
+
+        Returns:
+            True if loaded successfully, False otherwise.
+        """
+        # Show loading screen and ensure it's visible
+        self._loading_screen.set_message(f"Loading project: {path.name}...")
+        self._loading_screen.show_overlay(self)
+        # Process events multiple times to ensure loading screen is shown
+        for _ in range(3):
+            QApplication.processEvents()
+
+        try:
+            # Load project data
+            project_data = load_project(path)
+
+            # Restore project data (this also sets baseline)
+            self._restore_project_data(project_data)
+
+            # Update project path
+            self._project_path = path
+            # Baseline is already set in _restore_project_data()
+            self._update_window_title()
+
+            # Add to recent projects
+            self._settings_manager.add_recent_project(path)
+            self._update_recent_files_menu()
+
+            # Note: Loading screen will be hidden after overview generation completes
+            # (via _on_overview_finished or _on_overview_error)
+            # If no audio file was loaded, hide it now
+            if not self._current_audio_path:
+                self._loading_screen.hide_overlay()
+
+            logger.info(f"Project loaded from {path}")
+            return True
+
+        except FileNotFoundError:
+            self._loading_screen.hide_overlay()
+            QMessageBox.critical(self, "Error", f"Project file not found:\n{path}")
+            return False
+        except ValueError as e:
+            self._loading_screen.hide_overlay()
+            QMessageBox.critical(self, "Error", f"Invalid project file:\n{str(e)}")
+            logger.error(f"Invalid project file: {e}")
+            return False
+        except Exception as e:
+            self._loading_screen.hide_overlay()
+            QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
+            logger.error(f"Failed to load project: {e}")
+            return False
+
+    def closeEvent(self, event) -> None:
+        """Handle window close event.
+
+        Args:
+            event: Close event.
+        """
+        if self._project_modified:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save them before closing?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                if not self.save_project():
+                    event.ignore()  # User cancelled save, don't close
+                    return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()  # User cancelled close
+                return
+
+        # Cancel overview generation if in progress
+        if self._overview_manager.is_generating():
+            self._overview_manager.cancel()
+
+        # Auto-save on close if enabled and modified
+        if self._settings_manager.get_auto_save_enabled() and self._project_modified:
+            self._autosave_manager.save_now()
+
+        # Save window geometry
+        self._save_window_geometry()
+
+        event.accept()
+
+    def _update_window_title(self) -> None:
+        """Update window title with project name and modified indicator."""
+        title = "SpectroSampler"
+        if self._project_path:
+            title = f"{self._project_path.stem} - {title}"
+        if self._project_modified:
+            title = f"*{title}"
+        self.setWindowTitle(title)
+
+    def _setup_autosave(self) -> None:
+        """Setup auto-save timer based on settings."""
+        if self._settings_manager.get_auto_save_enabled():
+            interval = self._settings_manager.get_auto_save_interval()
+            self._autosave_manager.start(interval)
+        else:
+            self._autosave_manager.stop()
+
+    def _on_autosave_error(self, error_msg: str) -> None:
+        """Handle auto-save error.
+
+        Args:
+            error_msg: Error message.
+        """
+        # Log error but don't interrupt user
+        logger.warning(f"Auto-save error: {error_msg}")
+
+    def _restore_window_geometry(self) -> None:
+        """Restore window geometry from settings."""
+        geometry = self._settings_manager.get_window_geometry()
+
+        # Restore window size
+        if geometry.get("size"):
+            size = geometry["size"]
+            if isinstance(size, QSize):
+                self.resize(size)
+            elif isinstance(size, (list, tuple)) and len(size) == 2:
+                # Convert to int in case QSettings returns strings
+                try:
+                    width = int(size[0]) if size[0] else 1400
+                    height = int(size[1]) if size[1] else 900
+                    self.resize(width, height)
+                except (ValueError, TypeError):
+                    # Default size if conversion fails
+                    self.resize(1400, 900)
+
+        # Restore window position
+        if geometry.get("position"):
+            pos = geometry["position"]
+            if isinstance(pos, QPoint):
+                self.move(pos)
+            elif isinstance(pos, (list, tuple)) and len(pos) == 2:
+                # Convert to int in case QSettings returns strings
+                try:
+                    x = int(pos[0]) if pos[0] else 100
+                    y = int(pos[1]) if pos[1] else 100
+                    self.move(x, y)
+                except (ValueError, TypeError):
+                    # Default position if conversion fails
+                    pass
+
+        # Restore splitter sizes
+        if geometry.get("mainSplitterSizes"):
+            sizes = geometry["mainSplitterSizes"]
+            if isinstance(sizes, list) and len(sizes) >= 2:
+                # Convert to int in case QSettings returns strings
+                try:
+                    sizes_int = [int(s) if s else 0 for s in sizes]
+                    self._main_splitter.setSizes(sizes_int)
+                except (ValueError, TypeError):
+                    pass
+
+        if geometry.get("editorSplitterSizes"):
+            sizes = geometry["editorSplitterSizes"]
+            if isinstance(sizes, list) and len(sizes) >= 2:
+                # Find editor splitter - it's the horizontal splitter in the editor
+                # This is a bit complex, but we can restore it if we find it
+                pass  # TODO: Implement if needed
+
+        if geometry.get("playerSplitterSizes"):
+            sizes = geometry["playerSplitterSizes"]
+            if isinstance(sizes, list) and len(sizes) >= 2:
+                # Convert to int in case QSettings returns strings
+                try:
+                    sizes_int = [int(s) if s else 0 for s in sizes]
+                    self._player_spectro_splitter.setSizes(sizes_int)
+                except (ValueError, TypeError):
+                    pass
+
+        # Restore panel visibility
+        if "infoTableVisible" in geometry:
+            self._sample_table_view.setVisible(geometry["infoTableVisible"])
+        if "playerVisible" in geometry:
+            self._sample_player.setVisible(geometry["playerVisible"])
+
+    def _save_window_geometry(self) -> None:
+        """Save window geometry to settings."""
+        geometry = {}
+
+        # Save window size
+        geometry["size"] = [self.width(), self.height()]
+
+        # Save window position
+        geometry["position"] = [self.x(), self.y()]
+
+        # Save splitter sizes
+        geometry["mainSplitterSizes"] = self._main_splitter.sizes()
+        geometry["playerSplitterSizes"] = self._player_spectro_splitter.sizes()
+
+        # Save panel visibility
+        geometry["infoTableVisible"] = self._sample_table_view.isVisible()
+        geometry["playerVisible"] = self._sample_player.isVisible()
+
+        self._settings_manager.set_window_geometry(geometry)
+
+    def _update_recent_files_menu(self) -> None:
+        """Update recent files menus."""
+        # Update recent projects menu
+        self._recent_projects_menu.clear()
+        projects = self._settings_manager.get_recent_projects(
+            max_count=self._settings_manager.get_max_recent_projects()
+        )
+        if projects:
+            for i, (path, timestamp) in enumerate(projects, 1):
+                action = QAction(f"{i}. {path.stem}", self)
+                action.setData(path)
+                action.triggered.connect(lambda checked, p=path: self.load_project_file(p))
+                self._recent_projects_menu.addAction(action)
+            self._recent_projects_menu.addSeparator()
+            self._recent_projects_menu.addAction(self._clear_recent_projects_action)
+        else:
+            no_projects_action = QAction("No recent projects", self)
+            no_projects_action.setEnabled(False)
+            self._recent_projects_menu.addAction(no_projects_action)
+
+        # Update recent audio files menu
+        self._recent_audio_files_menu.clear()
+        audio_files = self._settings_manager.get_recent_audio_files(
+            max_count=self._settings_manager.get_max_recent_audio_files()
+        )
+        if audio_files:
+            for i, (path, timestamp) in enumerate(audio_files, 1):
+                action = QAction(f"{i}. {path.name}", self)
+                action.setData(path)
+                action.triggered.connect(lambda checked, p=path: self.load_audio_file(p))
+                self._recent_audio_files_menu.addAction(action)
+            self._recent_audio_files_menu.addSeparator()
+            self._recent_audio_files_menu.addAction(self._clear_recent_audio_files_action)
+        else:
+            no_audio_action = QAction("No recent audio files", self)
+            no_audio_action.setEnabled(False)
+            self._recent_audio_files_menu.addAction(no_audio_action)
+
+    def _on_clear_recent_projects(self) -> None:
+        """Handle clear recent projects action."""
+        self._settings_manager.clear_recent_projects()
+        self._update_recent_files_menu()
+
+    def _on_clear_recent_audio_files(self) -> None:
+        """Handle clear recent audio files action."""
+        self._settings_manager.clear_recent_audio_files()
+        self._update_recent_files_menu()
+
+    def _on_autosave_enabled_changed(self, enabled: bool) -> None:
+        """Handle auto-save enabled toggle.
+
+        Args:
+            enabled: True if auto-save is enabled, False otherwise.
+        """
+        self._settings_manager.set_auto_save_enabled(enabled)
+        self._setup_autosave()
+
+    def _on_autosave_interval_settings(self) -> None:
+        """Handle auto-save interval settings dialog."""
+        from PySide6.QtWidgets import QInputDialog
+
+        current_interval = self._settings_manager.get_auto_save_interval()
+        interval, ok = QInputDialog.getInt(
+            self,
+            "Auto-save Interval",
+            "Auto-save interval (minutes):",
+            current_interval,
+            1,
+            60,
+            1,
+        )
+        if ok:
+            self._settings_manager.set_auto_save_interval(interval)
+            self._setup_autosave()
+
+    def _on_overview_progress(self, message: str) -> None:
+        """Handle overview generation progress.
+
+        Args:
+            message: Progress message.
+        """
+        # Update loading screen message
+        self._loading_screen.set_message(message)
+
+    def _on_overview_finished(self, tile: SpectrogramTile) -> None:
+        """Handle overview generation finished.
+
+        Args:
+            tile: Generated overview tile.
+        """
+        # Update UI with overview tile (this happens on main thread via Qt signals)
+        self._navigator.set_overview_tile(tile)
+        try:
+            self._spectrogram_widget.set_overview_tile(tile)
+        except Exception:
+            pass
+
+        # Hide loading screen
+        self._loading_screen.hide_overlay()
+
+        logger.info(f"Overview generation completed for: {self._current_audio_path}")
+
+    def _on_overview_error(self, error_msg: str) -> None:
+        """Handle overview generation error.
+
+        Args:
+            error_msg: Error message.
+        """
+        logger.error(f"Overview generation error: {error_msg}")
+        
+        # Hide loading screen even if overview generation failed
+        # UI can still function with detail tiles only
+        self._loading_screen.hide_overlay()
 
     def _on_detect_samples(self) -> None:
         """Handle Detect Samples request."""
@@ -721,10 +1595,14 @@ class MainWindow(QMainWindow):
             self._pipeline_wrapper.settings.bit_depth = self._export_bit_depth
             self._pipeline_wrapper.settings.channels = self._export_channels
 
+        # Show loading screen for detection
+        self._loading_screen.set_message("Detecting samples...")
+        self._loading_screen.show_overlay(self)
+        # Process events to ensure loading screen is visible
+        for _ in range(3):
+            QApplication.processEvents()
+        
         # Start detection processing
-        self._progress_bar.setVisible(True)
-        self._progress_bar.setRange(0, 0)  # Indeterminate
-        self._status_label.setText("Detecting samples...")
         self._detection_manager.start_detection()
 
     def _on_detection_progress(self, message: str) -> None:
@@ -733,7 +1611,8 @@ class MainWindow(QMainWindow):
         Args:
             message: Progress message.
         """
-        self._status_label.setText(message)
+        # Update loading screen message
+        self._loading_screen.set_message(message)
 
     def _on_detection_finished(self, result: dict[str, Any]) -> None:
         """Handle detection finished.
@@ -741,8 +1620,8 @@ class MainWindow(QMainWindow):
         Args:
             result: Processing results.
         """
-        self._progress_bar.setVisible(False)
-        self._status_label.setText("Detection complete")
+        # Hide loading screen
+        self._loading_screen.hide_overlay()
 
         # Update segments
         segments = result.get("segments", [])
@@ -765,14 +1644,18 @@ class MainWindow(QMainWindow):
         if self._pipeline_wrapper:
             self._push_undo_state()
 
+        # Mark as modified (samples detected)
+        self._project_modified = True
+        self._update_window_title()
+
     def _on_detection_error(self, error: str) -> None:
         """Handle detection error.
 
         Args:
             error: Error message.
         """
-        self._progress_bar.setVisible(False)
-        self._status_label.setText(f"Error: {error}")
+        # Hide loading screen
+        self._loading_screen.hide_overlay()
         QMessageBox.critical(self, "Detection Error", f"Failed to detect samples:\n{error}")
 
     def _on_settings_changed(self) -> None:
@@ -788,6 +1671,10 @@ class MainWindow(QMainWindow):
         # Update grid manager
         self._grid_manager.settings = self._grid_settings
         self._spectrogram_widget.set_grid_manager(self._grid_manager)
+
+        # Mark as modified (settings changed)
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_sample_selected(self, index: int) -> None:
         """Handle sample selection.
@@ -865,6 +1752,10 @@ class MainWindow(QMainWindow):
                     if self._is_paused:
                         self._paused_position = new_position_ms
 
+            # Mark as modified (sample moved)
+            self._project_modified = True
+            self._update_window_title()
+
     def _on_sample_resized(self, index: int, start: float, end: float) -> None:
         """Handle sample resized.
 
@@ -925,6 +1816,10 @@ class MainWindow(QMainWindow):
                     if self._is_paused:
                         self._paused_position = new_position_ms
 
+            # Mark as modified (sample resized)
+            self._project_modified = True
+            self._update_window_title()
+
     def _on_sample_created(self, start: float, end: float) -> None:
         """Handle sample created.
 
@@ -945,6 +1840,10 @@ class MainWindow(QMainWindow):
             self._update_sample_table(self._pipeline_wrapper.current_segments)
             self._update_navigator_markers()
 
+            # Mark as modified (sample created)
+            self._project_modified = True
+            self._update_window_title()
+
     def _on_sample_deleted(self, index: int) -> None:
         """Handle sample deleted.
 
@@ -959,6 +1858,10 @@ class MainWindow(QMainWindow):
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_sample_table(self._pipeline_wrapper.current_segments)
             self._update_navigator_markers()
+
+            # Mark as modified (sample deleted)
+            self._project_modified = True
+            self._update_window_title()
 
     def _update_navigator_markers(self) -> None:
         """Update navigator markers from current segments."""
@@ -1426,6 +2329,10 @@ class MainWindow(QMainWindow):
         self._update_sample_table([])
         self._update_navigator_markers()
 
+        # Mark as modified (all samples deleted)
+        self._project_modified = True
+        self._update_window_title()
+
     def _on_reorder_samples(self) -> None:
         """Manually reorder samples chronologically."""
         if not self._pipeline_wrapper:
@@ -1434,6 +2341,10 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_sample_table(self._pipeline_wrapper.current_segments)
         self._update_navigator_markers()
+
+        # Mark as modified (samples reordered)
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_toggle_auto_order(self, enabled: bool) -> None:
         """Toggle Auto Sample Order and update dependent UI state."""
@@ -1491,6 +2402,10 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_navigator_markers()
 
+        # Mark as modified (sample disabled/enabled)
+        self._project_modified = True
+        self._update_window_title()
+
     def _on_disable_sample(self, index: int, disabled: bool) -> None:
         """Disable/enable single sample from context menu."""
         if not self._pipeline_wrapper:
@@ -1512,6 +2427,10 @@ class MainWindow(QMainWindow):
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
 
+            # Mark as modified (sample disabled/enabled)
+            self._project_modified = True
+            self._update_window_title()
+
     def _on_disable_other_samples(self, index: int) -> None:
         """Disable all samples except the given index."""
         if not self._pipeline_wrapper:
@@ -1530,6 +2449,10 @@ class MainWindow(QMainWindow):
                 pass
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_navigator_markers()
+
+        # Mark as modified (samples disabled/enabled)
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_export_samples(self) -> None:
         """Handle export samples action."""
@@ -1630,6 +2553,9 @@ class MainWindow(QMainWindow):
         # Update menu action states
         self._update_undo_redo_actions()
 
+        # Check if we've returned to baseline state
+        self._check_baseline_state()
+
     def _redo(self) -> None:
         """Redo last undone action."""
         if not self._redo_stack or not self._pipeline_wrapper:
@@ -1654,6 +2580,59 @@ class MainWindow(QMainWindow):
 
         # Update menu action states
         self._update_undo_redo_actions()
+
+        # Check if we've returned to baseline state
+        self._check_baseline_state()
+
+    def _check_baseline_state(self) -> None:
+        """Check if current state matches baseline and update modified flag accordingly."""
+        if not self._pipeline_wrapper:
+            return
+
+        # If undo stack is empty, we're at the "beginning" of history - check if it matches baseline
+        # (redo stack may have items, but that's fine - we're checking if we've undone back to baseline)
+        if len(self._undo_stack) == 0:
+            # Compare current segments with baseline
+            current_segments = self._pipeline_wrapper.current_segments
+            
+            # Handle empty baseline case (project loaded/saved with no segments)
+            if len(self._baseline_segments) == 0:
+                if len(current_segments) == 0:
+                    # Both empty - clear modified flag
+                    self._project_modified = False
+                    self._update_window_title()
+                return
+            
+            # If lengths don't match, not at baseline
+            if len(current_segments) != len(self._baseline_segments):
+                return
+            
+            # Check if segments match (deep comparison with epsilon for floats)
+            matches = True
+            for curr, base in zip(current_segments, self._baseline_segments):
+                # Compare basic attributes with epsilon for float comparison
+                if (
+                    abs(curr.start - base.start) > 1e-6
+                    or abs(curr.end - base.end) > 1e-6
+                    or curr.detector != base.detector
+                    or abs(curr.score - base.score) > 1e-6
+                ):
+                    matches = False
+                    break
+                
+                # Compare enabled state (handle missing attrs)
+                curr_enabled = curr.attrs.get("enabled", True) if hasattr(curr, "attrs") and curr.attrs else True
+                base_enabled = base.attrs.get("enabled", True) if hasattr(base, "attrs") and base.attrs else True
+                if curr_enabled != base_enabled:
+                    matches = False
+                    break
+            
+            if matches:
+                # Segments match baseline - clear modified flag
+                # Note: This doesn't check settings, but undoing all segment changes
+                # should reset modified status per user request
+                self._project_modified = False
+                self._update_window_title()
 
     def _update_undo_redo_actions(self) -> None:
         """Update undo/redo action enabled states."""
@@ -1701,27 +2680,63 @@ class MainWindow(QMainWindow):
 
     # Model-view callbacks
     def _on_model_enabled_toggled(self, column: int, enabled: bool) -> None:
+        if not self._pipeline_wrapper or not (0 <= column < len(self._pipeline_wrapper.current_segments)):
+            return
+        # Push undo state before change
+        self._push_undo_state()
+        # Update the segment in pipeline_wrapper to match model
+        seg = self._pipeline_wrapper.current_segments[column]
+        if not hasattr(seg, "attrs") or seg.attrs is None:
+            seg.attrs = {}
+        seg.attrs["enabled"] = enabled
         # Reflect enabled update into other views
         self._spectrogram_widget.set_segments(self._get_display_segments())
+        # Force spectrogram canvas to refresh
+        self._spectrogram_widget._canvas.draw_idle()
         self._update_navigator_markers()
+        # Mark as modified
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_model_times_edited(self, column: int, start: float, end: float) -> None:
+        if not self._pipeline_wrapper or not (0 <= column < len(self._pipeline_wrapper.current_segments)):
+            return
+        # Push undo state before change
+        self._push_undo_state()
+        # Update the segment in pipeline_wrapper to match model
+        seg = self._pipeline_wrapper.current_segments[column]
+        seg.start = start
+        seg.end = end
+        # Notify model that times were updated (in case it needs to refresh display)
+        self._sample_table_model.update_segment_times(column, seg.start, seg.end)
         # After start/end edits, reorder and refresh overlays
         self._maybe_auto_reorder()
         self._spectrogram_widget.set_segments(self._get_display_segments())
+        # Force spectrogram canvas to refresh
+        self._spectrogram_widget._canvas.draw_idle()
         self._update_navigator_markers()
+        # Mark as modified
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_model_duration_edited(self, column: int, new_duration: float) -> None:
         if not self._pipeline_wrapper or not (
             0 <= column < len(self._pipeline_wrapper.current_segments)
         ):
             return
+        # Push undo state before change
+        self._push_undo_state()
         seg = self._pipeline_wrapper.current_segments[column]
-        # Apply duration change according to current mode
+        # Apply duration change according to current mode (this also updates the model)
         self._apply_duration_change(seg, new_duration, column)
         self._maybe_auto_reorder()
         self._spectrogram_widget.set_segments(self._get_display_segments())
+        # Force spectrogram canvas to refresh
+        self._spectrogram_widget._canvas.draw_idle()
         self._update_navigator_markers()
+        # Mark as modified
+        self._project_modified = True
+        self._update_window_title()
 
     def _get_enabled_segments(self) -> list[Segment]:
         """Return only enabled segments from current pipeline wrapper.
@@ -1783,6 +2798,9 @@ class MainWindow(QMainWindow):
             # Update settings if pipeline wrapper exists
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.settings.export_pre_pad_ms = value
+            # Mark as modified (export settings changed)
+            self._project_modified = True
+            self._update_window_title()
 
     def _on_export_post_pad_settings(self) -> None:
         """Handle export post-padding settings dialog."""
@@ -1802,6 +2820,9 @@ class MainWindow(QMainWindow):
             # Update settings if pipeline wrapper exists
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.settings.export_post_pad_ms = value
+            # Mark as modified (export settings changed)
+            self._project_modified = True
+            self._update_window_title()
 
     def _on_export_format_changed(self, format: str) -> None:
         """Handle export format change."""
@@ -1812,6 +2833,9 @@ class MainWindow(QMainWindow):
         # Update settings if pipeline wrapper exists
         if self._pipeline_wrapper:
             self._pipeline_wrapper.settings.format = format
+        # Mark as modified (export settings changed)
+        self._project_modified = True
+        self._update_window_title()
 
     def _on_export_sample_rate_settings(self) -> None:
         """Handle export sample rate settings dialog."""
@@ -1826,6 +2850,9 @@ class MainWindow(QMainWindow):
             # Update settings if pipeline wrapper exists
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.settings.sample_rate = self._export_sample_rate
+            # Mark as modified (export settings changed)
+            self._project_modified = True
+            self._update_window_title()
 
     def _on_export_bit_depth_settings(self) -> None:
         """Handle export bit depth settings dialog."""
@@ -1851,6 +2878,9 @@ class MainWindow(QMainWindow):
             # Update settings if pipeline wrapper exists
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.settings.bit_depth = self._export_bit_depth
+            # Mark as modified (export settings changed)
+            self._project_modified = True
+            self._update_window_title()
 
     def _on_export_channels_settings(self) -> None:
         """Handle export channels settings dialog."""
@@ -1876,6 +2906,9 @@ class MainWindow(QMainWindow):
             # Update settings if pipeline wrapper exists
             if self._pipeline_wrapper:
                 self._pipeline_wrapper.settings.channels = self._export_channels
+            # Mark as modified (export settings changed)
+            self._project_modified = True
+            self._update_window_title()
 
     # UI refresh rate handlers
     def _on_ui_refresh_rate_enabled_changed(self, enabled: bool) -> None:
@@ -2031,17 +3064,5 @@ class MainWindow(QMainWindow):
             seg.start = new_start
             seg.end = old_end  # Keep end unchanged
 
-        # Update table cells to reflect changes (block signals to prevent re-triggering)
-        self._sample_table.blockSignals(True)
-        try:
-            start_item = self._sample_table.item(2, col)
-            if start_item:
-                start_item.setText(f"{seg.start:.3f}")
-            end_item = self._sample_table.item(3, col)
-            if end_item:
-                end_item.setText(f"{seg.end:.3f}")
-            duration_item = self._sample_table.item(4, col)
-            if duration_item:
-                duration_item.setText(f"{seg.duration():.3f}")
-        finally:
-            self._sample_table.blockSignals(False)
+        # Update model to reflect changes (model will emit dataChanged signals)
+        self._sample_table_model.update_segment_times(col, seg.start, seg.end)

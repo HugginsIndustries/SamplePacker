@@ -15,6 +15,7 @@ The GUI is the primary and only supported interface.
 - **Multiple detection modes**: Voice VAD, transient flux, non-silence energy, spectral interestingness
 - **High-quality output**: Preserve original quality by default (no re-encoding), with optional format conversion
 - **Navigator scrollbar**: Bitwig-style overview with spectrogram preview
+- **Project files**: Save and resume your work with project files that preserve all settings and samples
 - **Cross-platform**: Works on Windows and Linux
 
 ## GUI Features
@@ -124,10 +125,27 @@ python -m spectrosampler.gui.main
 2. **Adjust Settings**: Configure detection mode, timing parameters, and filters in the settings panel
 3. **Update Preview**: Click "Update Preview" to process the audio and detect samples
 4. **Edit Samples**: Click and drag markers on the spectrogram to adjust samples
-5. **Export**: File → Export Samples to export selected samples
+5. **Save Project** (optional): File → Save Project (`Ctrl+S`) to save your work
+6. **Export**: File → Export Samples (`Ctrl+E`) to export selected samples
+
+**Workflow Tip**: Save your project frequently to preserve your work. You can close and reopen the project later to continue where you left off.
 
 ### Keyboard Shortcuts
 
+**File Operations:**
+- **New Project**: `Ctrl+N`
+- **Open Project**: `Ctrl+O`
+- **Save Project**: `Ctrl+S`
+- **Save Project As**: `Ctrl+Shift+S`
+- **Open Audio File**: `Ctrl+Shift+O`
+- **Export Samples**: `Ctrl+E`
+
+**Editing:**
+- **Undo**: `Ctrl+Z`
+- **Redo**: `Ctrl+Shift+Z`
+- **Detect Samples**: `Ctrl+D`
+
+**Navigation:**
 - **Zoom In/Out**: `Ctrl++` / `Ctrl+-` or mouse wheel
 - **Pan**: Arrow keys or drag in navigator
 - **Play**: `Space` (double-click sample)
@@ -170,6 +188,55 @@ python -m spectrosampler.gui.main
 - **High-pass Filter**: Set minimum frequency (Hz)
 - **Low-pass Filter**: Set maximum frequency (Hz)
 - **Real-time Update**: Spectrogram updates automatically when filters change
+
+### Project Files
+
+SpectroSampler supports saving and loading project files (`.ssproj` format) that preserve your entire workflow state:
+
+#### What Project Files Save
+
+- **Audio file path**: Reference to the loaded audio file
+- **Detected samples**: All segments with their start/end times, detectors, scores, and enabled states
+- **Detection settings**: All processing parameters (mode, thresholds, timing, filters, etc.)
+- **Export settings**: Format, padding, sample rate, bit depth, channel configuration
+- **Grid settings**: Grid mode, snap interval, BPM, subdivisions, visibility
+- **UI state**: Current view range, zoom level
+
+#### Saving Projects
+
+- **Save Project** (`Ctrl+S`): Save to the current project file, or prompt for a location if no project is open
+- **Save Project As** (`Ctrl+Shift+S`): Always prompt for a new save location
+- **Auto-fill filename**: When saving a new project, the dialog suggests `YYYY-MM-DD_{audio_filename}.ssproj`
+
+Project files are saved in JSON format and can be opened in any text editor if needed.
+
+#### Loading Projects
+
+- **Open Project** (`Ctrl+O`): Open an existing project file
+- **Missing audio file**: If the audio file is moved or missing, SpectroSampler will prompt you to locate it
+- **Automatic restoration**: All settings, samples, and UI state are automatically restored
+
+#### Modified Status
+
+- The window title shows an asterisk (*) when the project has unsaved changes
+- The modified flag is set when you:
+  - Load an audio file
+  - Detect samples
+  - Edit samples (move, resize, create, delete, enable/disable)
+  - Change detection or export settings
+  - Modify grid settings
+- Undoing all changes back to the saved state clears the modified flag
+- Closing the window with unsaved changes prompts you to save
+
+#### Project File Format
+
+Project files use the `.ssproj` extension and contain:
+- Version information for compatibility
+- Timestamps (created, modified)
+- All project data in JSON format
+- Audio file path (relative or absolute)
+
+**Note**: Project files store the audio file path, not the audio data itself. Keep your audio files accessible, or use absolute paths if you move projects between computers.
 
 <!-- CLI options removed -->
 
