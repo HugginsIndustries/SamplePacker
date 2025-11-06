@@ -1,207 +1,238 @@
 # TODO
 
-Note: Do not worry about backward compatibility for now. The program is unreleased, so anything can be changed. The goal is to improve the functionality as much as possible.
+## **Notes**
 
-## Fixes
+_Unreleased: no backward compatibility guarantees. Optimize functionality first._
+
+Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_GUIDE.md`.
+
+**Priority levels:**
+- [P0] Critical/near-term items for correctness, stability, or unblocking core workflows.
+- [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
+- [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
+
+_Summary: P0: 3 items, P1: 26 items, P2: 18 items_
+
+**Maintainers guide (editing this TODO):**
+- Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
+- Keep formatting consistent: section → subsection(s) → item → acceptance bullets.
+- Use backticks for code identifiers (files like `utils.py`, functions like `check_ffmpeg()`, classes like `FFmpegError`).
+- Assign an appropriate priority tag ([P0]/[P1]/[P2]).
+- Do not delete empty sections; write "No items currently planned" instead.
+- Update the summary counts when adding/removing items.
+- Keep user-facing acceptance criteria concise and testable.
+
+## **Fixes**
 
 ### Detection & Sample Processing
-- [ ] Change detection algorithms/settings defaults to improve detection accuracy
-  - Review current defaults for VoiceVAD aggressiveness (currently hardcoded to 3), threshold values, and padding settings
-  - Consider adaptive thresholds based on audio characteristics
-  - Add validation to ensure detector settings are within valid ranges
+- [ ] [P1] Improve detection defaults for better accuracy
+  - Review current defaults (e.g., VoiceVAD aggressiveness=3), thresholds, and padding.
+  - Consider adaptive thresholds based on audio characteristics.
+  - Acceptance:
+    - Documented default set per detector.
+    - Measurable precision/recall improvement on a small reference clip set.
+- [ ] [P0] Preserve existing samples on re-detect
+  - Re-running detection must not auto-delete existing segments; handle overlaps via UI.
+  - Acceptance:
+    - Existing segments remain intact after detect.
+    - Overlaps handled by the Overlaps & Duplicates workflow (see below).
 
 ### Audio Playback
-- [ ] Make looping samples more seamless (currently very choppy with short samples)
-  - Investigate QMediaPlayer loop functionality and buffering for seamless playback
-  - Consider using sounddevice for lower-latency playback with better looping support
-  - Add crossfade option for loop transitions
-  - May need to pre-load and buffer short samples differently
-- [ ] Add auto-play functionality to automatically play next sample
-  -Implement with toggle option on player widget (next to loop toggle, default off)
+- [ ] [P1] Improve seamless looping for short samples
+  - Improve QMediaPlayer usage and buffering; consider crossfade option and/or pre-buffering.
+  - Acceptance: On a 250 ms loop, audible gap < 10 ms; optional crossfade toggle.
+- [ ] [P2] Auto-play next sample
+  - Player toggle to automatically advance to the next sample (default off).
+  - Acceptance: When enabled, playback advances on end-of-media.
 
 ### Error Handling & Validation
-- [ ] Check FFmpeg availability at application startup and show user-friendly error if missing
-  - Currently `check_ffmpeg()` exists but may not be called early enough
-  - Display helpful installation instructions in error dialog
-- [ ] Improve error handling for audio file loading failures
-  - Add validation for file existence, format support, and corruption before processing
-  - Show user-friendly error messages instead of silent failures or generic exceptions
-- [ ] Handle FFmpeg subprocess failures more gracefully
-  - Currently raises generic `FFmpegError` - add more specific error types and recovery suggestions
-  - Validate FFmpeg command arguments before execution
-- [ ] Fix analysis duration mismatch warning to be more actionable
-  - Currently logs warning but doesn't suggest fixes or prevent potential issues
-  - Consider retry logic or alternative resampling methods
+- [ ] [P0] FFmpeg availability check at app startup
+  - Call `check_ffmpeg()` on launch and show a blocking, user-friendly dialog with install guidance if missing.
+  - Acceptance: App won't proceed without acknowledging guidance; includes Windows/Linux instructions.
+- [ ] [P1] Improve audio loading failure messages
+  - Validate file existence/format/corruption early; replace generic exceptions with specific messages.
+  - Acceptance: File open failure dialogs name the cause and suggest next steps.
+- [ ] [P1] Improve FFmpeg subprocess failure handling
+  - Keep `FFmpegError` but provide actionable remediation in UI; validate args before run.
+  - Acceptance: Export/cut failures surface a dialog with failing command summary and suggestions.
+- [ ] [P1] Make analysis duration mismatch warning actionable
+  - Provide likely causes and a retry with alternate resampling.
+  - Acceptance: Warning dialog includes “Try alternate resample” that re-runs analysis.
 
 ### Code Quality & Robustness
-- [ ] Replace bare `except Exception:` clauses with specific exception types
-  - Found in `pipeline.py` (detector initialization) and `audio_io.py` - should catch specific exceptions
-  - Add proper error logging for debugging
-- [ ] Complete TODO items in code comments
-  - `dsp.py`: Implement geometric mean calculation and highpass/lowpass filtering
-  - `utils.py`: Complete sanitize_filename TODO (handle non-ASCII gracefully) and format_duration (hours/minutes formatting)
-  - `export.py`: Markers export functions have TODOs but appear implemented - verify and remove comments
-  - `pipeline.py`: Batch processing and parallelization TODOs
-- [ ] Add input validation for settings ranges
-  - Validate min/max durations, padding values, thresholds, etc. to prevent invalid configurations
-  - Show warnings when settings may cause issues (e.g., very large max_samples)
+- [ ] [P0] Replace bare `except Exception:` with specific exceptions
+  - Widespread in GUI and core; keep user-friendly messages while logging full trace.
+  - Acceptance: Zero bare `except` usages in repo; logging includes exception type and message.
+- [ ] [P2] Complete code TODOs (targeted)
+  - `dsp.py`: Implement geometric mean helpers; add high/low-pass wrappers (or delegate to FFmpeg) and remove placeholder comments once wired up.
+  - `utils.py`: Finalize `sanitize_filename` (handle non-ASCII via Unicode normalization and safe replacements) and `format_duration` (hh:mm:ss.s formatting).
+  - `export.py`: Verify markers export functions; if already complete, remove lingering TODO comments; add minimal tests for Audacity/Reaper outputs.
+  - `pipeline.py`: Revisit batch processing/parallelization TODOs; define thread-safety constraints and ensure progress reporting remains consistent.
+  - Acceptance: Items above implemented or explicitly re-tracked here; obsolete TODO comments removed; basic unit tests added where applicable.
+- [ ] [P1] Add input validation for settings ranges
+  - Validate durations, paddings, thresholds, etc.; disable invalid UI inputs or surface validation messages.
+  - Acceptance: Impossible values cannot be entered or are rejected with clear guidance.
 
-## Features
+## **Features**
 
 ### Sample Export & Naming
-- [ ] Add ability to set names for exported samples
-  - Add a "Name" row to the sample info section
-  - Allow user to input a custom name for each sample that is added to the existing file naming
-  - Example: for "field.wav" input file - `field_sample_0000_14.2s-14.4s_detector-manual.wav` becomes `field_sample_0000_bird_14.2s-14.4s_detector-manual.wav` when name is set to "bird"
-  - When no name is set, use current file name format
-- [ ] Add bulk rename/edit functionality for samples
-  - Allow selecting multiple samples and applying name patterns or batch edits
-  - Support find/replace in sample names
-- [ ] Export samples to multiple formats simultaneously
-  - Allow exporting same samples to WAV, FLAC, MP3, etc. in one operation
-  - Useful for creating sample packs with different format options
+- [ ] [P1] Add optional sample name field for export filenames
+  - Add a Name field; append to current filename template when set.
+  - Acceptance: `field_sample_0000_bird_14.2s-14.4s_detector-manual.wav` when Name="bird"; otherwise current format.
+- [ ] [P2] Add bulk rename/edit for samples
+  - Multi-select + batch operations, including find/replace in names.
+  - Acceptance: Apply a pattern or find/replace to selected rows.
+- [ ] [P2] Add export to multiple formats in one run
+  - WAV/FLAC/MP3 simultaneous export.
+  - Acceptance: Single operation writes multiple formats per selected sample.
 
 ### UI Improvements
-- [ ] Add logarithmic & exponential spectrogram options
-  - Currently only linear scaling available - add options for better frequency visualization
-  - Allow user to switch between scales in real-time
-- [ ] Add playback indicator to main spectrogram
-  - When a sample is playing and in current spectrogram view window, render a line that moves across the sample as it plays
-  - Alternatively add a simple speaker icon to indicate the currently playing sample
-  - Do both if possible
-- [ ] Add waveform view option alongside spectrogram
-  - Option to toggle between spectrogram and waveform visualization
-  - Useful for precise editing and timing
-- [ ] Add color customization for spectrogram
-  - Allow users to choose color schemes (e.g., grayscale, color, inverted)
-  - Useful for different use cases and accessibility
-- [ ] Implement sample filtering/search in table
-  - Add search box to filter samples by name, detector type, time range, or duration
-  - Useful for large sample counts
-- [ ] Add multi-select functionality in sample table
-  - Allow Ctrl+Click and Shift+Click selection of multiple samples
-  - Enable bulk operations (delete, export, rename, etc.)
-- [ ] Add zoom to fit selection
-  - Keyboard shortcut or button to zoom spectrogram to fit selected sample(s)
-  - Quick navigation to selected samples
-- [ ] Add statistics panel
-  - Show total samples, total duration, average sample length, etc.
-  - Display detection statistics (detector distribution, score ranges)
-- [ ] Add duplicate sample detection warning
-  - Warn when samples overlap significantly or are very similar
-  - Option to automatically remove duplicates
+- [ ] [P1] Add spectrogram scale options (linear/log/exp) and color maps
+  - Real-time switchable scaling; selectable color schemes.
+  - Acceptance: Scale and color map controls with immediate visual update. [Docs Impact]
+- [ ] [P1] Add playback indicator in main spectrogram
+  - Moving line (or icon) for the currently playing sample when in view.
+  - Acceptance: Indicator accurately tracks playback position.
+- [ ] [P2] Add waveform view toggle
+  - Switch between spectrogram and waveform for precise edits.
+  - Acceptance: Toggle control with synced selection and zoom.
+- [ ] [P1] Add filtering/search in sample table
+  - Filter by name, detector, time range, or duration.
+  - Acceptance: Text+facet filters reduce visible rows accordingly.
+- [ ] [P1] Add multi-select in sample table
+  - Ctrl/Shift selection enabling bulk operations.
+  - Acceptance: Bulk delete/export/rename across selected rows.
+- [ ] [P2] Add zoom to fit selection
+  - Shortcut/button to fit selected samples in view.
+  - Acceptance: View window adjusts to encompass selected segments.
+- [ ] [P2] Add statistics panel
+  - Totals, averages, detector distribution.
+  - Acceptance: Panel reflects current table selection and updates live. [Docs Impact]
+- [ ] [P2] Add metadata tags for samples
+  - Tags/categories on samples (e.g., "bird", "water", "urban"); filter by tags.
+  - Acceptance: Tags editable in table; export embeds tags where format supports it; tag filter works. [Docs Impact]
+- [ ] [P2] Add timeline markers/bookmarks
+  - Place named/color-coded markers on the timeline for reference and quick navigation.
+  - Acceptance: Markers visible on ruler, listed in a panel/menu, clickable to jump; persist in project files. [Docs Impact]
+
+### Overlaps & Duplicates
+- [ ] [P1] Overlap resolution workflow (when new detections overlap existing)
+  - Options: Discard Overlaps, Discard Duplicates (identical), Keep All; with hover tooltips.
+  - Acceptance: Dialog appears on conflicts or respects default behavior if disabled. [Docs Impact]
+- [ ] [P2] Duplicate sample detection warning
+  - Warn on high overlap or similarity threshold.
+  - Acceptance: Warning badge in table and quick-fix to remove duplicates.
 
 ### Project Management
-- None
+- No items currently planned
 
 ### Settings & Configuration
-- [ ] Change max samples range to (1-10000) to match all possible file name outputs: "sample_0000"-"sample_9999"
-  - Currently limited to lower range - expand to support 4-digit zero-padding fully
-- [ ] Implement settings presets for sample detection/export
-  - Save/load named presets for different use cases (voice, transients, music, etc.)
-  - Share presets via files (YAML/JSON format)
-  - Quick preset selector in UI
-- [ ] Add settings persistence
-  - Remember user's preferred settings between sessions
-  - Store in user config directory (platform-appropriate)
-- [ ] Add customizable keyboard shortcuts
-  - Allow users to remap keyboard shortcuts
-  - Save custom key bindings in settings
+- [ ] [P1] Increase max samples range to 1–10,000
+  - Align with 4-digit zero-padding (`0000`–`9999`).
+  - Acceptance: Slider/spin supports full range; value persists via QSettings and project files. [Docs Impact]
+- [ ] [P1] Add presets for detection/export (GUI integration)
+  - Load/Save presets as YAML in `spectrosampler/presets`; quick selector in UI.
+  - Acceptance: Preset dropdown and “Save as preset…” dialog. [Docs Impact]
+- [ ] [P1] Persist detection and export settings (QSettings + project round-trip)
+  - Restore on app restart and when loading projects.
+  - Acceptance: Last-used values restored; project load applies saved values. [Docs Impact]
+- [ ] [P2] Add customizable keyboard shortcuts
+  - Remapping UI with persistence.
+  - Acceptance: Changes survive restart; conflicts are prevented.
+- [ ] [P1] Add overlap handling defaults in settings
+  - “Show Overlap Dialog” (default true) and default behavior when disabled.
+  - Acceptance: Behavior matches settings; persists in project. [Docs Impact]
 
 ### Workflow Improvements
-- [ ] Add export progress indicator with cancel option
-  - Show progress bar and estimated time remaining during export
-  - Allow cancellation of long-running exports
-  - Resume capability for interrupted exports
-- [ ] Add sample preview before export
-  - Quick preview dialog showing sample boundaries and basic info
-  - Option to adjust before final export
-- [ ] Add drag and drop support for multiple audio files
-  - Currently supports single file - allow batch loading
-  - Queue files for sequential or parallel processing
-- [ ] Add batch export with resume capability
-  - Export large numbers of samples with ability to pause/resume
-  - Track export status per sample
-- [ ] Add undo/redo keyboard shortcuts
-  - Currently has undo/redo stacks but may not have keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z)
-  - Show in Edit menu with current state
+
+#### Export Workflow
+- [ ] [P1] Add export progress with cancel and final summary
+  - Progress bar, ETA, safe cancel; end-of-run dialog summarizing per-sample status.
+  - Acceptance: Summary lists success/failures; cancel cleans temporary files. [Docs Impact]
+- [ ] [P2] Add sample preview before export
+  - Lightweight preview/edit dialog for boundaries and info.
+  - Acceptance: Adjustments applied prior to writing files.
+- [ ] [P1] Add optional peak normalization on export
+  - When enabled, normalize each sample to a target peak (e.g., -0.1 dBFS) without clipping.
+  - Acceptance: Export setting toggle; resulting files peak at target ±0.1 dB; no clipping; source audio unchanged. [Docs Impact]
+- [ ] [P2] Add batch export with pause/resume
+  - Track per-sample status and allow resume.
+  - Acceptance: Resuming completes remaining items after restart.
+
+#### File Management
+- [ ] [P1] Polish drag & drop flow
+  - Properly load dropped audio file(s).
+  - When a project/file is already loaded, show a confirmation dialog with options:
+    - "Create New Project" – if there are unsaved changes, prompt to Save/Discard/Cancel; then close current project and load the dropped file(s).
+    - "Append Audio File(s)" – keep existing audio and append dropped file(s) to the end of the current timeline with no gap (for split recordings); support multiple dropped files appended in alphanumerical order.
+    - "Cancel" – abort the operation.
+  - Support drag & drop of multiple audio files simultaneously; process and append in alphanumerical order.
+  - Acceptance: The three-choice dialog appears; append preserves timing alignment.
+
+#### Editing Workflow
+- [ ] [P2] Implement advanced undo/redo
+  - Extend undo/redo beyond samples/segments to all project changes, including settings changes (exclude global user settings that apply to all projects, e.g., auto-save).
+  - Add Edit menu submenus for Undo and Redo that list the last 10 states with human-readable change descriptions.
+  - Add "Undo All" and "Redo All" options for full stack control.
+  - Ensure compatibility with existing samples/segments undo stack and UI indicators.
+  - Acceptance: Edit menu lists last 10 states with human-readable labels; Undo All/Redo All available; segments/settings changes are reversible without breaking current indicators.
 
 ### Documentation & Help
-- [ ] Add keyboard shortcuts help dialog
-  - List all available keyboard shortcuts in a searchable dialog
-  - Accessible via Help menu or F1
-- [ ] Add tooltips and help text for settings
-  - Explain what each setting does and its impact
-  - Link to more detailed documentation
-- [ ] Improve user guide documentation
-  - Add screenshots and step-by-step tutorials
-  - Video tutorials for common workflows
-- [ ] Add API documentation
-  - Generate Sphinx/other docs for developer API
-  - Document detector interface and extension points
+- [ ] [P1] Add in-app Keyboard Shortcuts dialog (F1)
+  - Searchable dialog reflecting current shortcuts; link from Help menu.
+  - Acceptance: F1 opens dialog; content matches README. [Docs Impact]
+- [ ] [P1] Add tooltips and inline help for settings
+  - Concise explanations and links to docs.
+  - Acceptance: All controls have helpful tooltips. [Docs Impact]
+- [ ] [P2] Improve user guide
+  - Screenshots and step-by-step tutorials.
+  - Acceptance: Updated `README.md` and `docs/GUI_GUIDE.md`. [Docs Impact]
+- [ ] [P2] Add API surface documentation (limited)
+  - Developer-facing docs for detector interface and extension points.
+  - Acceptance: Brief API section or Sphinx skeleton.
 
-## Performance & Optimization
+### Utilities
+
+- [ ] [P2] Add diagnostics panel
+  - Show FFmpeg version, audio device info, and environment details.
+  - Acceptance: Accessible from Help; assists in support cases. [Docs Impact]
+
+## **Performance & Optimization**
 
 ### Memory & Processing
-- [ ] Implement lazy loading of spectrogram tiles
-  - Currently may load all tiles at once - load on-demand as user navigates
-  - Reduce memory usage for very long audio files
-- [ ] Add cache management with size limits
-  - Implement cache size limits and cleanup policies
-  - Show cache size in settings and allow manual cleanup
-  - Prevent cache from growing unbounded
-- [ ] Optimize spectrogram generation for large files
-  - Consider chunked processing or streaming for files > 1 hour
-  - Progressive loading with lower resolution first
-- [ ] Add background processing for detection
-  - Run detection in background thread to keep UI responsive
-  - Show progress and allow cancellation
-- [ ] Implement multi-threading for detection
-  - Parallelize detector execution where possible
-  - Use all CPU cores for faster processing
+- [ ] [P1] Expose spectrogram tile cache size and stats
+  - `SpectrogramTiler` already has LRU (default 64). Add setting and a status readout.
+  - Acceptance: Setting to change cache size; UI shows current tile count and memory estimate. [Docs Impact]
+- [ ] [P2] Optimize spectrogram generation for very large files
+  - Consider chunked/streaming processing and progressive loading (lower-res first).
+  - Acceptance: Files > 1h remain responsive during navigation.
+- [ ] [P1] Add background detection progress and cancellation
+  - Keep UI responsive and allow cancel.
+  - Acceptance: Progress indicator and responsive cancel during detection.
+- [ ] [P2] Add multi-threading for detection where safe
+  - Parallelize detector execution across cores when thread-safe.
+  - Acceptance: Noticeable speedup on multi-core systems without UI jank.
 
 ### UI Responsiveness
-- [ ] Optimize navigator scrollbar rendering
-  - Currently mentioned as pixelated at high zoom - implement adaptive resolution
-  - Cache rendered tiles to avoid regeneration
-- [ ] Debounce/throttle UI updates during rapid changes
-  - Prevent UI lag when adjusting sliders or rapidly changing settings
-  - Batch updates where possible
+- [ ] [P1] Navigator rendering quality & performance
+  - Reduce pixelation at high zoom with adaptive resolution while keeping smooth interaction.
+  - Acceptance: No visible pixelation at high zoom; target 60 FPS on typical files.
+- [ ] [P1] Debounce/throttle bursty UI updates
+  - Smooth slider drags and rapid changes; batch redraws.
+  - Acceptance: No noticeable lag when adjusting settings rapidly.
 
-## Testing & Quality Assurance
+## **Testing & Quality Assurance**
 
 ### Test Coverage
-- [ ] Add integration tests for GUI workflows
-  - Test file loading, detection, export end-to-end
-  - Use Qt testing frameworks or automated UI testing
-- [ ] Add performance benchmarks
-  - Benchmark detection algorithms, file processing, and UI operations
-  - Track performance regressions
-- [ ] Add tests for edge cases
-  - Very short/long audio files, corrupted files, unsupported formats
-  - Boundary conditions (zero samples, overlapping samples, etc.)
-- [ ] Add tests for error handling
-  - FFmpeg failures, missing files, invalid settings
-  - Verify user-friendly error messages are shown
-
-## Low Priority
-
-### UI Enhancements
-- [ ] Generate higher resolution on the navigator scrollbar when zooming in (maybe have a high/medium/low resolution?)
-  - It gets pretty pixelated past a certain zoom level
-  - Make sure to implement in a way that doesn't slow down zooming and moving on the navigator
-  - Consider adaptive quality based on zoom level
-- [ ] Add export project as template
-  - Save project settings as reusable template for similar audio files
-  - Share templates with community
-- [ ] Add metadata tags support
-  - Add tags/categories to samples (e.g., "bird", "water", "urban")
-  - Export metadata with samples (e.g., ID3 tags, WAV metadata chunks)
-  - Filter and search by tags
-- [ ] Add timeline markers/bookmarks
-  - Allow users to place custom markers on timeline for reference
-  - Name and color-code markers
-- [ ] Add audio analysis tools
-  - RMS level, peak detection, frequency analysis per sample
-  - Visualize audio characteristics in sample info panel
-
+- [ ] [P1] Add GUI integration tests for core workflows
+  - File load → detect → edit → export happy path.
+  - Acceptance: Stable tests passing in CI.
+- [ ] [P2] Add performance benchmarks
+  - Track detection, processing, and UI operations over time.
+  - Acceptance: Baselines defined; regressions flagged.
+- [ ] [P1] Add edge case tests
+  - Very short/long files, unsupported/corrupt files, boundary conditions.
+  - Acceptance: Clear error messages and no crashes.
+- [ ] [P1] Add error handling tests
+  - FFmpeg missing/failures, invalid settings.
+  - Acceptance: Expected dialogs and logs, no uncaught exceptions.
