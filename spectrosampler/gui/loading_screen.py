@@ -4,13 +4,8 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
-
-try:
-    from PySide6.QtGui import QPaintEvent
-except ImportError:
-    from PySide6.QtWidgets import QPaintEvent
 
 from spectrosampler.gui.theme import ThemeManager
 

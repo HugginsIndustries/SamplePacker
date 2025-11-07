@@ -157,7 +157,10 @@ class SettingsManager:
     # Overlap dialog settings
     def get_show_overlap_dialog(self) -> bool:
         """Return True to show overlap dialog on conflicts (default True)."""
-        return self._settings.value("showOverlapDialog", True, type=bool)
+        value = self._settings.value("showOverlapDialog", True, type=bool)
+        if value is None:
+            return True
+        return bool(value)
 
     def set_show_overlap_dialog(self, enabled: bool) -> None:
         """Enable/disable showing the overlap dialog on conflicts."""
@@ -191,7 +194,10 @@ class SettingsManager:
         Returns:
             True if auto-save is enabled, False otherwise. Default: True.
         """
-        return self._settings.value("autoSaveEnabled", True, type=bool)
+        value = self._settings.value("autoSaveEnabled", True, type=bool)
+        if value is None:
+            return True
+        return bool(value)
 
     def set_auto_save_enabled(self, enabled: bool) -> None:
         """Set auto-save enabled setting.
@@ -208,7 +214,11 @@ class SettingsManager:
         Returns:
             Auto-save interval in minutes. Default: 5.
         """
-        return self._settings.value("autoSaveInterval", 5, type=int)
+        value = self._settings.value("autoSaveInterval", 5, type=int)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 5
 
     def set_auto_save_interval(self, minutes: int) -> None:
         """Set auto-save interval in minutes.
@@ -226,7 +236,11 @@ class SettingsManager:
         Returns:
             Maximum number of recent projects. Default: 10.
         """
-        return self._settings.value("maxRecentProjects", 10, type=int)
+        value = self._settings.value("maxRecentProjects", 10, type=int)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 10
 
     def set_max_recent_projects(self, count: int) -> None:
         """Set maximum number of recent projects to keep.
@@ -244,7 +258,11 @@ class SettingsManager:
         Returns:
             Maximum number of recent audio files. Default: 10.
         """
-        return self._settings.value("maxRecentAudioFiles", 10, type=int)
+        value = self._settings.value("maxRecentAudioFiles", 10, type=int)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 10
 
     def set_max_recent_audio_files(self, count: int) -> None:
         """Set maximum number of recent audio files to keep.
