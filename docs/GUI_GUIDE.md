@@ -1,261 +1,240 @@
 # SpectroSampler GUI Guide
 
-## Getting Started
+This guide is the hands-on companion to the README. It follows the full GUI workflow—from the welcome screen to export—and calls out tips surfaced by recent updates.
 
-### Launching the Application
+_Note: this guide is currently WIP, some details may not be accurate or up-to-date._
 
-Launch the GUI application:
+---
 
-```bash
-spectrosampler-gui
-```
+## 1. Launch & Welcome Screen
 
-Or:
+Start SpectroSampler with `spectrosampler-gui` (or `python -m spectrosampler.gui.main`). The welcome screen provides:
 
-```bash
-python -m spectrosampler.gui
-```
+- **Create New Project** – Start from an empty session.
+- **Open Project...** – Browse for an existing `.ssproj`.
+- **Recent Projects / Audio Files** – Double-click to reopen; buttons clear the history.
 
-### Opening Audio Files
+Autosave is enabled by default. If SpectroSampler detects an autosave newer than your last manual save, it will offer to restore it when a project loads.
 
-1. **File Menu**: File → Open Audio File
-2. **Drag and Drop**: Drag audio files onto the window
-3. **Supported Formats**: WAV, FLAC, MP3, M4A, AAC
+> Screenshot placeholder: `docs/images/welcome-screen.png`
 
-## Interface Overview
+---
 
-### Main Window Layout
+## 2. Main Window Tour
 
-- **Left Panel**: Settings panel with all processing parameters
-- **Center**: Timeline ruler (top), spectrogram view (middle), navigator scrollbar (bottom)
-- **Bottom**: Sample table showing all detected samples
+### 2.1 Layout at a Glance
 
-### Resizable Panels
+| Area | Purpose |
+| --- | --- |
+| **Detection Settings (left panel)** | Detector choice, thresholds, timing limits, CPU worker count, denoise/filters, overlap defaults, detection trigger button. |
+| **Sample Player (top center)** | Metadata readout, play/pause/stop, next/previous navigation, loop toggle, scrub slider. |
+| **Spectrogram Canvas (center)** | Zoom/pan view, draw or adjust sample regions, right-click for context actions, drag handles to resize. |
+| **Navigator Overview (below spectrogram)** | Miniature spectrogram with a draggable viewport rectangle for quick jumps. |
+| **Sample Table (bottom)** | Per-sample enable checkbox, start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
 
-All UI elements are resizable by clicking and dragging the edges, similar to modern DAWs like Bitwig.
+All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram.
 
-## Spectrogram Navigation
+> Screenshot placeholder: `docs/images/main-window-overview.png`
 
-### Zoom
+### 2.2 Menus & Key Commands
 
-- **Mouse Wheel**: Zoom in/out (with Ctrl for fine control)
-- **Zoom Controls**: Use View menu or keyboard shortcuts
-- **Zoom Levels**: 0.5x (overview) to 32x (maximum detail)
-- **Zoom Center**: Zoom centers on mouse cursor position
+- **File** – Project lifecycle (new/open/save), audio import, recent files.
+- **Edit** – Undo/redo, re-run detection, auto sample ordering, bulk delete/disable, Duration Edits (expand/contract, stretch from start/end).
+- **View** – Zoom controls, toggle info table/player visibility, show disabled samples, refresh-rate limiter, grid settings.
+- **Export** – Pre/post padding, format (WAV/FLAC), sample rate, bit depth, channels.
+- **Settings** – Autosave toggle/interval, clear recent projects/audio.
+- **Help** – Verbose logging option and about dialog.
 
-### Pan
+Keyboard shortcuts mirror these actions; see [Appendix A](#appendix-a-keyboard-shortcuts).
 
-- **Navigator**: Click and drag in navigator scrollbar to navigate
-- **Arrow Keys**: Use arrow keys to pan left/right
-- **Timeline**: Click on timeline ruler to jump to time position
+---
 
-### Timeline Ruler
+## 3. Preparing Detection
 
-- **Time Markers**: Shows time markers (seconds, minutes, hours)
-- **Click to Jump**: Click on timeline ruler to jump to time position
-- **Adaptive Scale**: Time markers adapt to zoom level
+### 3.1 Loading Audio
 
-### Navigator Scrollbar
+1. Drag-and-drop a file or use **File → Open Audio File** (`Ctrl+Shift+O`).
+2. Supported formats: WAV, FLAC, MP3, M4A, AAC (FFmpeg handles decoding).
+3. The status bar confirms sample rate, channels, and duration.
 
-- **Overview**: Shows miniature spectrogram of entire file
-- **View Indicator**: Light grey rectangle shows current visible range
-- **Navigate**: Click/drag in navigator to navigate
-- **Resize View**: Drag edges of view indicator to resize visible range
+### 3.2 Choosing a Detector
 
-## Sample Editing
+The **Detection Mode** combo offers:
 
-### Selecting Samples
+- `auto` – Hybrid scoring that chooses a detector automatically.
+- `voice` – WebRTC VAD (requires optional dependency).
+- `transient` – Spectral flux-based hit detection.
+- `nonsilence` – Energy-based detection for general material.
+- `spectral` – Highlights “interesting” regions in the spectrogram.
 
-- **Click**: Click on sample marker in spectrogram
-- **Table**: Click on row in sample table
-- **Multiple Selection**: Use Ctrl/Cmd to select multiple samples
+Adjust the **Threshold** slider to refine sensitivity. Lower values detect more segments; higher values are stricter.
 
-### Moving Samples
+### 3.3 Timing & Overlap Controls
 
-- **Drag**: Click and drag sample marker to move
-- **Snap**: Enable grid snapping to snap to grid positions
-- **Keyboard**: Use arrow keys to nudge selected samples
+- **Detection pre/post padding** – Add context around detected regions before they appear in the table.
+- **Merge gap / min gap** – Automatically merge detections or insist on spacing between them.
+- **Min/Max duration** – Clamp sample length.
+- **Max samples** – Cap the total number of detections.
+- **Sample spread** – Keep detections evenly spaced (strict or closest).
+- **Overlap Resolution** – Decide how to handle duplicates/overlaps when re-running detection; pick defaults and optionally remember them.
 
-### Resizing Samples
+### 3.4 Audio Processing & Resources
 
-- **Edges**: Click and drag left/right edges of sample marker
-- **Snap**: Enable grid snapping to snap edges to grid positions
-- **Minimum**: Minimum sample duration is enforced
+- **Denoise (off / afftdn / arnndn)** – Light clean-up before detection.
+- **High-pass / Low-pass** – Restrict processing to a frequency band; the spectrogram updates live.
+- **Noise reduction** – Apply additional attenuation in dB.
+- **CPU workers** – Tweak how many cores detection uses (default is the system count minus one).
 
-### Creating Samples
+When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-screen overlay shows progress while detection runs on a worker thread.
 
-- **Click and Drag**: Click and drag on empty spectrogram area
-- **Snap**: Enable grid snapping to snap to grid positions
-- **Visual Feedback**: Shows preview while dragging
+> Screenshot placeholder: `docs/images/detection-overlay.png`
 
-### Deleting Samples
+---
 
-- **Delete Key**: Select sample and press Delete key
-- **Context Menu**: Right-click sample for context menu
-- **Table**: Uncheck sample in table to exclude from export
+## 4. Navigating & Auditioning
 
-## Grid Snapping
+### 4.1 Spectrogram Navigation
 
-### Free Time Mode
+- **Zoom** with the scroll wheel (hold `Ctrl` for smaller increments) or use View menu shortcuts (`Ctrl++`, `Ctrl+-`, `Ctrl+0`).
+- **Pan** by dragging in the spectrogram, dragging the navigator rectangle, or using arrow keys.
+- **Timeline jumps** by clicking the time ruler above the spectrogram.
 
-- **Snap Interval**: Set snap interval (e.g., 0.1s, 0.5s, 1s)
-- **Grid Lines**: Visual grid lines at snap intervals
-- **Adaptive**: Grid spacing adapts to zoom level
+### 4.2 Using the Sample Player
 
-### Musical Bar Grid Mode
+- Select a sample to populate the player with ID, start/end, duration, and detector name.
+- Transport buttons provide play/pause/stop/next/previous control; `Space` plays the focused sample.
+- Toggle **Loop** to rehearse a region.
+- Scrub within the sample using the slider; releasing emits a seek event while playback continues.
 
-- **BPM**: Set tempo (60-200 BPM)
-- **Subdivision**: Choose subdivision (whole, half, quarter, eighth, sixteenth, thirty-second)
-- **Time Signature**: Set time signature (4/4, 3/4, 6/8, etc.)
-- **Beat Numbers**: Shows beat numbers on grid
+### 4.3 Sync with the Sample Table
 
-### Toggle Snap
+Selecting a sample from the table highlights it in the spectrogram and vice versa. Table columns provide:
 
-- **Checkbox**: Check/uncheck "Snap to grid" in settings
-- **Keyboard**: Press `G` key to toggle snap
-- **Visual Feedback**: Highlights nearest grid line when near snap point
+- **Enable** – Include/exclude from export.
+- **Start / End / Duration** – Editable numeric cells (double-click to edit, press Enter to commit).
+- **Detector** – Source detector label.
+- **Actions** – Center, Fill (zoom the sample to the viewport width), Play, Delete.
 
-## Frequency Filtering
+Use the context menu or toolbar buttons on the spectrogram to disable the current sample or disable everything except the current one.
 
-### High-Pass Filter
+> Screenshot placeholder: `docs/images/sample-table.png`
 
-- **Slider**: Adjust high-pass filter frequency (Hz)
-- **Real-time**: Spectrogram updates automatically
-- **Range**: 0-20kHz
+---
 
-### Low-Pass Filter
+## 5. Editing Samples
 
-- **Slider**: Adjust low-pass filter frequency (Hz)
-- **Real-time**: Spectrogram updates automatically
-- **Range**: 0-20kHz
+### 5.1 Basics
 
-### Frequency Range Display
+- Drag inside a region to move it across the timeline.
+- Drag handles to adjust boundaries. Hold `Shift` to temporarily ignore snapping.
+- Draw a new sample by clicking an empty area and dragging.
+- Delete with the `Delete` key or the table’s Delete action.
 
-- **Visual Indicator**: Shows active frequency range on spectrogram axis
-- **Filtered Spectrogram**: Only selected frequency range is displayed
-- **Cache**: Filtered spectrograms are cached for performance
+### 5.2 Precision Tools
 
-## Processing Workflow
+- **Duration Edits (Edit menu)** –
+  - *Expand/Contract* adjusts both edges.
+  - *Extend/Shorten (From Start)* moves the end boundary only.
+  - *Extend/Shorten (From End)* moves the start boundary only.
+- **Lock duration on start edit** – Maintains length while you reposition start time (toggle in Edit menu).
+- **Auto Sample Order** – Re-rank samples by priority after manual edits.
 
-### Step 1: Open Audio File
+### 5.3 Grid Snapping
 
-1. File → Open Audio File
-2. Select audio file
-3. File metadata is loaded and displayed
+Open **View → Grid Settings** to control:
 
-### Step 2: Adjust Settings
+- Mode: Free time vs. Musical bars.
+- Snap interval (time) or BPM/subdivision/time signature (musical).
+- Visibility of grid lines and snap strength.
 
-1. **Detection Mode**: Choose detection mode (auto, voice, transient, etc.)
-2. **Timing Parameters**: Adjust pre-padding, post-padding, merge gap, etc.
-3. **Audio Processing**: Configure denoise, filters, noise reduction
-4. **Grid Settings**: Configure grid snapping (optional)
+Toggle snapping quickly with the `G` key or the checkbox under detection settings.
 
-### Step 3: Process Preview
+> Screenshot placeholder: `docs/images/grid-settings-dialog.png`
 
-1. Click "Update Preview" button
-2. Processing runs in background
-3. Progress is shown in status bar
-4. Detected samples appear on spectrogram
+---
 
-### Step 4: Edit Samples
+## 6. Exporting Your Pack
 
-1. **Select**: Click on sample markers
-2. **Move**: Drag markers to adjust positions
-3. **Resize**: Drag edges to adjust durations
-4. **Create**: Click and drag to create new samples
-5. **Delete**: Select and press Delete key
+Open the **Export** menu to configure session-wide parameters:
 
-### Step 5: Export Samples
+- **Pre/Post padding...** – Add silence before/after every exported sample.
+- **Format** – WAV or FLAC.
+- **Sample Rate** – Enter 0 to keep the original.
+- **Bit Depth** – 16-bit, 24-bit, 32-bit float, or “None (original).”
+- **Channels** – Mono, stereo, or “None (original)” to keep source layout.
 
-1. **Select**: Check samples to export in sample table
-2. **Export**: File → Export Samples
-3. **Choose Directory**: Select output directory
-4. **Export**: Samples are exported to selected directory
+When ready, choose **File → Export Samples** (`Ctrl+E`). Only enabled (checked) rows are included. Exported filenames can include the detector name, index, and source file id.
 
-## Keyboard Shortcuts
+> Screenshot placeholder: `docs/images/export-menu.png`
 
-- **Open**: `Ctrl+O` (File → Open)
-- **Save/Export**: `Ctrl+S` (File → Export)
-- **Zoom In**: `Ctrl++` or `Ctrl+=`
-- **Zoom Out**: `Ctrl+-`
-- **Fit to Window**: `Ctrl+0`
-- **Play**: `Space` (double-click sample)
-- **Delete**: `Delete` key
-- **Snap Toggle**: `G` key
-- **Pan Left**: `Left Arrow`
-- **Pan Right**: `Right Arrow`
-- **Quit**: `Ctrl+Q`
+---
 
-## Tips for Long Recordings
+## 7. Managing Sessions Safely
 
-### Performance
+- **Autosave** – Enabled by default; configure via Settings → Auto-save → Auto-save Interval.
+- **Manual Save** – `Ctrl+S` writes the current `.ssproj`. `Ctrl+Shift+S` prompts for a new filename.
+- **Unsaved Changes Prompt** – Closing the window or quitting the app with modifications opens a Save/Discard/Cancel dialog.
+- **Recent Lists** – Clear stale entries from Settings → Clear Recent Projects/Audio.
 
-- **Tiled Rendering**: Spectrogram is rendered in tiles for long files
-- **Lazy Loading**: Tiles are loaded on-demand as you zoom/pan
-- **Caching**: Generated tiles are cached for performance
-- **Overview**: Use overview in navigator for quick navigation
+Project files are plain JSON and include audio paths, detection/export settings, grid config, and window layout. If the referenced audio is missing, SpectroSampler prompts to relink it when opening the project.
 
-### Navigation
+---
 
-- **Navigator**: Use navigator scrollbar for quick navigation
-- **Timeline**: Click on timeline ruler to jump to positions
-- **Zoom Levels**: Use lower zoom levels for overview, higher for detail
-- **Keyboard**: Use keyboard shortcuts for faster navigation
+## 8. Performance Tips
 
-### Sample Editing
+- **Limit UI Refresh Rate** – View → Limit UI Refresh Rate, then choose a lower Hz value to reduce GPU/CPU load on dense projects.
+- **Hide Panels** – Temporarily hide the sample table or player from the View menu to focus resources on the spectrogram.
+- **Batch Clean-ups** – Use Edit → Disable All Samples or Delete All Samples before rerunning detection on a different configuration.
+- **Navigator** – Stay zoomed in for editing while relying on the navigator for coarse movement.
 
-- **Grid Snapping**: Enable grid snapping for precise editing
-- **Multiple Selection**: Use Ctrl/Cmd to select multiple samples
-- **Batch Operations**: Use sample table for batch selection
-- **Visual Feedback**: Watch for snap indicators when near grid points
+Large projects benefit from leaving the info table collapsed while you fine-tune detections, then re-expanding for export prep.
 
-## Troubleshooting
+---
 
-### Audio File Won't Load
+## 9. Troubleshooting
 
-- Check file format is supported (WAV, FLAC, MP3, M4A, AAC)
-- Verify FFmpeg is installed and in PATH
-- Check file is not corrupted
+| Symptom | Try This |
+| --- | --- |
+| Audio file fails to load | Confirm the file plays in another app. Verify FFmpeg is installed and on PATH. |
+| Detection returns nothing | Lower the threshold, reduce minimum duration, or switch detectors. Ensure `Max samples` isn’t set too low. |
+| Overlap dialog shows every run | Set a preferred default and tick “Remember my choice,” then re-run detection. |
+| Playback is silent | Check workstation audio output, confirm the sample’s Enable checkbox is on, and ensure the sample isn’t muted in your OS mixer. |
+| GUI stutters on long files | Lower the refresh rate, collapse panels, or reduce zoom. Close other heavy applications. |
 
-### Preview Processing Fails
+Verbose logging (Help → Verbose Log) writes additional diagnostics to the console—useful when filing bug reports.
 
-- Check FFmpeg is installed and in PATH
-- Verify audio file is valid
-- Check settings are valid
-- Look at error message in status bar
+---
 
-### Spectrogram Not Displaying
+## Appendix A – Keyboard Shortcuts
 
-- Ensure audio file is loaded
-- Check frequency range settings
-- Verify processing completed successfully
-- Try updating preview again
+| Area | Action | Shortcut |
+| --- | --- | --- |
+| File | New Project | `Ctrl+N` |
+|  | Open Project | `Ctrl+O` |
+|  | Open Audio File | `Ctrl+Shift+O` |
+|  | Save Project | `Ctrl+S` |
+|  | Save Project As | `Ctrl+Shift+S` |
+|  | Export Samples | `Ctrl+E` |
+| Edit | Detect Samples | `Ctrl+D` |
+|  | Undo / Redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+|  | Delete Sample | `Delete` |
+| View | Zoom In / Out / Fit | `Ctrl++`, `Ctrl+-`, `Ctrl+0` |
+|  | Toggle Snap | `G` |
+|  | Toggle Disabled Samples | `View → Show Disabled Samples` (no default shortcut) |
+| Navigation | Pan | Arrow keys or drag navigator |
+|  | Play Selected Sample | `Space` or double-click |
+|  | Seek Within Sample | Drag the player slider |
+| App | Quit | `Ctrl+Q` |
 
-### Samples Not Appearing
+---
 
-- Check detection mode settings
-- Adjust threshold if needed
-- Verify timing parameters are reasonable
-- Check max samples limit
+## Appendix B – Reference
 
-## Advanced Features
+- **README** – High-level feature overview and installation instructions.
+- **`spectrosampler/gui/main_window.py`** – Source for menus, shortcuts, and interaction logic.
+- **`spectrosampler/gui/detection_settings.py`** – Detection configuration widgets.
+- **`spectrosampler/gui/sample_player.py`** – Player behavior and signals.
+- **`spectrosampler/gui/autosave.py`** – Autosave implementation details.
 
-### Settings Persistence
-
-- Window state (size, position, splitter positions) is saved
-- Last used directory is remembered
-- Grid preferences are saved
-- Theme preferences are saved
-
-### Batch Processing
-
-- Use CLI for batch processing (deprecated but still available)
-- GUI is optimized for single file processing with preview
-
-### Export Options
-
-- Export only selected samples
-- Preserve original quality (no re-encoding)
-- Optional format conversion
-- Custom filename templates
+If you notice behavior mismatches or missing documentation, open an issue or submit a pull request—contributions are welcome!
 

@@ -1,44 +1,41 @@
 # SpectroSampler
 
-Turn long field recordings into usable sample packs with a modern GUI interface.
+Turn long field recordings into curated sample packs with a fast, modern desktop workflow.
 
-The GUI is the primary and only supported interface.
+SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited to launching the GUI with optional startup arguments.
 
-## Features
+---
 
-- **Modern GUI**: Dark theme with system integration, DAW-style timeline interface
-- **Interactive spectrogram**: Zoom, pan, and navigate through hour-long recordings
-- **Preview system**: See detected samples before exporting
-- **Sample editing**: Select, move, resize, and create samples visually on the spectrogram
-- **Grid snapping**: Free time or musical bar grid with tempo settings
-- **Frequency filtering**: High/low cut filters with real-time spectrogram updates
-- **Multiple detection modes**: Voice VAD, transient flux, non-silence energy, spectral interestingness
-- **High-quality output**: Preserve original quality by default (no re-encoding), with optional format conversion
-- **Navigator scrollbar**: Bitwig-style overview with spectrogram preview
-- **Project files**: Save and resume your work with project files that preserve all settings and samples
-- **Cross-platform**: Works on Windows and Linux
+## Highlights
 
-## GUI Features
+- **Guided Workspace** – Welcome screen with recent projects/audio, autosave controls, and persistent window layout.
+- **Detection Engine** – Multiple detectors (auto mix, voice VAD, transient, non-silence energy, spectral interestingness) with per-mode thresholds, merge rules, gap/duration guards, and multi-core processing control (`CPU workers`).
+- **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (disable others, center/fill view), and lockable grid snapping (time or musical bars).
+- **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, and sample table shortcuts (center/fill/play/delete).
+- **Export Pipeline** – Per-project format, sample rate, bit depth, channel configuration, and padding. Export selected samples without re-encoding by default (WAV/FLAC supported out of the box).
+- **Session Safety** – Project files capture every setting, autosave keeps rotating backups, and overlap resolution dialog protects existing edits when re-running detection.
 
-- **Timeline ruler**: Time markers at the top showing seconds, minutes, hours
-- **Spectrogram view**: Interactive spectrogram with zoom (0.5x to 32x) and pan
-- **Navigator scrollbar**: Bottom overview showing entire file with current view indicator
-- **Sample markers**: Visual markers on spectrogram with drag-and-drop editing
-- **Grid system**: Free time or musical bar grid with configurable snapping
-- **Frequency filtering**: High/low cut filters update spectrogram display in real-time
-- **Settings panel**: All processing parameters in scrollable panel
-- **Sample table**: List of detected samples with checkboxes for export selection
-- **Resizable panels**: Click and drag edges to resize UI elements (DAW-style)
+> Looking for GUI usage details and walkthrough screenshots? See `docs/GUI_GUIDE.md`.
+
+---
 
 ## Requirements
 
-- **Python 3.11+**
-- **FFmpeg** (must be installed and available in PATH)
+- **Python 3.11 or newer**
+- **FFmpeg** reachable on your PATH (used for decoding/encoding)
+- Optional: **Visual C++ Build Tools** if you plan to install the VAD detector (`webrtcvad`) on Windows
 
-### Installing FFmpeg
 
-- **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) or use `choco install ffmpeg`
-- **Linux**: `sudo apt-get install ffmpeg` (Debian/Ubuntu) or `sudo yum install ffmpeg` (RHEL/CentOS)
+### Install FFmpeg
+
+| Platform | Install | Verify |
+| --- | --- | --- |
+| Windows | `choco install ffmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add `ffmpeg\bin` to PATH | `ffmpeg -version` |
+| macOS | `brew install ffmpeg` | `ffmpeg -version` |
+| Debian/Ubuntu | `sudo apt-get install ffmpeg` | `ffmpeg -version` |
+| Fedora/CentOS | `sudo dnf install ffmpeg` or `sudo yum install ffmpeg` | `ffmpeg -version` |
+
+---
 
 ## Installation
 
@@ -50,258 +47,164 @@ cd SpectroSampler
 pip install -e .
 ```
 
-**Windows Users**: The core dependencies should install fine. If you want to use the Voice VAD detector, you'll need `webrtcvad`:
+Install optional extras as needed:
 
-```bash
-# Option 1: If you have Visual C++ Build Tools installed:
-pip install webrtcvad
+- `pip install -e ".[vad]"` – adds Voice VAD detector (`webrtcvad`, requires build tools on Windows)
+- `pip install -e ".[dev]"` – formatter, linters, tests
 
-# Option 2: Install pre-built wheel (if available):
-pip install webrtcvad --only-binary :all:
+On Windows, confirm “Add Python to PATH” during installation. If `pip install webrtcvad` fails, install **Visual Studio Build Tools (Desktop development with C++)** or use a prebuilt wheel (`pip install webrtcvad --only-binary :all:`).
 
-# Option 3: Install with the optional VAD dependency (if you have build tools):
-pip install -e ".[vad]"
-```
+---
 
-**Note**: If you don't need the VAD detector, you can use other modes (transient, nonsilence, spectral) without `webrtcvad`.
+## Launching the App
 
-### Windows notes
-
-- Install Python 3.11+ from `https://www.python.org/downloads/` and ensure “Add Python to PATH” is checked.
-- Install FFmpeg:
-  - Using Chocolatey (recommended):
-    ```powershell
-    choco install ffmpeg
-    ```
-  - Manual:
-    1) Download from `https://ffmpeg.org/download.html`
-    2) Extract to a folder like `C:\ffmpeg`
-    3) Add `C:\ffmpeg\bin` to your PATH
-  - Verify with:
-    ```powershell
-    ffmpeg -version
-    ```
-- Optional VAD support on Windows: `webrtcvad` may require Visual C++ Build Tools.
-  - Install Visual Studio Build Tools (Desktop development with C++) then run `pip install webrtcvad`, or try a prebuilt wheel: `pip install webrtcvad --only-binary :all:`.
-
-### Development
-
-```bash
-pip install -e ".[dev]"
-```
-
-On Windows, you can also install without `make` using direct commands:
-```powershell
-# Install
-pip install -e ".[dev]"
-
-# Run tests
-python -m pytest -q
-
-# Format code
-python -m black spectrosampler tests scripts
-
-# Lint
-python -m ruff check spectrosampler tests scripts
-```
-
-## Quick Start
-
-### GUI Application
-
-Launch the GUI application:
+Run the GUI with either command:
 
 ```bash
 spectrosampler-gui
-```
-
-Or:
-
-```bash
+# or
 python -m spectrosampler.gui.main
 ```
 
-1. **Open Audio File**: File → Open Audio File (or drag and drop)
-2. **Adjust Settings**: Configure detection mode, timing parameters, and filters in the settings panel
-3. **Update Preview**: Click "Update Preview" to process the audio and detect samples
-4. **Edit Samples**: Click and drag markers on the spectrogram to adjust samples
-5. **Save Project** (optional): File → Save Project (`Ctrl+S`) to save your work
-6. **Export**: File → Export Samples (`Ctrl+E`) to export selected samples
+First launch presents the welcome screen where you can start a new project, open existing `.ssproj` files, or jump to recent audio.
 
-**Workflow Tip**: Save your project frequently to preserve your work. You can close and reopen the project later to continue where you left off.
+### Command-line options
 
-### Keyboard Shortcuts
+```text
+spectrosampler-gui                    Launch the GUI
+spectrosampler-gui --project <path>   Open a specific project file
+spectrosampler-gui --audio <path>     Open a specific audio file
+spectrosampler-gui --help             Show help and exit
+spectrosampler-gui --version          Show version and exit
+```
 
-**File Operations:**
-- **New Project**: `Ctrl+N`
-- **Open Project**: `Ctrl+O`
-- **Save Project**: `Ctrl+S`
-- **Save Project As**: `Ctrl+Shift+S`
-- **Open Audio File**: `Ctrl+Shift+O`
-- **Export Samples**: `Ctrl+E`
+---
 
-**Editing:**
-- **Undo**: `Ctrl+Z`
-- **Redo**: `Ctrl+Shift+Z`
-- **Detect Samples**: `Ctrl+D`
+## Guided Tour
 
-**Navigation:**
-- **Zoom In/Out**: `Ctrl++` / `Ctrl+-` or mouse wheel
-- **Pan**: Arrow keys or drag in navigator
-- **Play**: `Space` (double-click sample)
-- **Delete**: `Delete` key
-- **Snap Toggle**: `G` key
+### Workspace Layout
+- **Left panel** – Detection settings (mode, thresholds, timing rules, denoise/high/low-pass filters, auto-sample order, CPU workers).
+- **Top center** – Sample player: scrubbable transport, loop toggle, navigation controls, and live metadata.
+- **Spectrogram canvas** – Zoom/pan, drag handles to edit sample bounds, create regions by dragging. Context menu adds disable/enable actions.
+- **Navigator overview** – Mini spectrogram for fast navigation, drag edges to resize view.
+- **Info table** – Grid of every detected sample with enable toggle, center/fill shortcuts, detector name, start/end/duration editing, and per-row delete.
 
-## GUI Usage
+### Persistence & Safety
+- Autosave is on by default (Settings → Auto-save). Interval is configurable; autosaves live in the system temp directory.
+- Closing with unsaved edits prompts to save/discard.
+- Recent projects/audio lists are available in the File menu and welcome screen; you can clear them via Settings → Clear Recent Projects/Audio.
 
-### Opening Files
+### Running Detection
+1. Load an audio file (`Ctrl+Shift+O` or drag/drop).
+2. Pick a detector and tune thresholds/timing.
+3. Optionally configure denoise/filtering, sample spread mode, or maximum sample count.
+4. Click **Detect Samples** (`Ctrl+D`). A loading overlay tracks progress.
+5. If new detections overlap existing samples, the Overlap Resolution dialog lets you choose to discard overlaps, discard duplicates, or keep all (with “remember my choice”).
 
-- **File Menu**: File → Open Audio File
-- **Drag and Drop**: Drag audio files onto the window
-- **Supported Formats**: WAV, FLAC, MP3, M4A, AAC
+### Reviewing & Editing
+- Select samples in the spectrogram or info table (they stay in sync).
+- Use **Duration Edits** (Edit menu) to expand/contract or stretch from start/end.
+- Re-order or re-rank samples automatically (Edit → Auto Sample Order / Re-order Samples).
+- Toggle display of disabled samples (View menu).
+- Lock snap to grid or adjust BPM/subdivision (View → Grid Settings).
+- Limit UI refresh rate if working on large projects (View → Limit UI Refresh Rate → Refresh Rate).
 
-### Navigation
+### Exporting
+- Choose format, sample rate, bit depth, and channels from the Export menu (set sample rate to `0` or pick “None (original)” for bit depth/channels to inherit source values).
+- Configure pre/post padding to add silence to each export.
+- Only enabled & checked samples in the info table are exported. Default format preserves original audio (no re-encode if parameters match).
 
-- **Zoom**: Mouse wheel (with Ctrl for fine control) or zoom controls
-- **Pan**: Click and drag in navigator scrollbar or use arrow keys
-- **Timeline**: Click on timeline ruler to jump to time position
-- **Navigator**: Click/drag in navigator to navigate, drag edges to resize view
+---
 
-### Sample Editing
+## Quick Start Checklist
 
-- **Select**: Click on sample marker in spectrogram
-- **Move**: Click and drag sample marker
-- **Resize**: Click and drag left/right edges of sample marker
-- **Create**: Click and drag on empty spectrogram area
-- **Delete**: Select sample and press Delete key
+1. Launch SpectroSampler and open an audio file.
+2. Review detection settings, then press **Detect Samples**.
+3. Audition results with the sample player; loop tricky regions when needed.
+4. Fine-tune boundaries directly on the spectrogram or by editing numbers in the info table.
+5. Save a project file to capture the session (`Ctrl+S`).
+6. Choose export parameters and run **Export Samples** (`Ctrl+E`).
 
-### Grid Snapping
+---
 
-- **Free Time Mode**: Set snap interval (e.g., 0.1s, 1s)
-- **Musical Bar Mode**: Set BPM and subdivision (quarter, eighth, etc.)
-- **Toggle Snap**: Check/uncheck "Snap to grid" or press `G` key
+## Keyboard Shortcuts
 
-### Frequency Filtering
+| Category | Action | Shortcut |
+| --- | --- | --- |
+| Project | New Project | `Ctrl+N` |
+|  | Open Project | `Ctrl+O` |
+|  | Open Audio File | `Ctrl+Shift+O` |
+|  | Save Project | `Ctrl+S` |
+|  | Save Project As | `Ctrl+Shift+S` |
+|  | Export Samples | `Ctrl+E` |
+| Editing | Detect Samples | `Ctrl+D` |
+|  | Undo / Redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+|  | Delete Sample | `Delete` |
+| Navigation | Zoom In / Out | `Ctrl++` / `Ctrl+-` |
+|  | Fit to Window | `Ctrl+0` |
+|  | Pan | Arrow keys or drag in navigator |
+|  | Play Sample | `Space` (double-click sample) |
+| Grid | Toggle Snap | `G` |
+| App | Quit (platform default) | `Ctrl+Q` |
 
-- **High-pass Filter**: Set minimum frequency (Hz)
-- **Low-pass Filter**: Set maximum frequency (Hz)
-- **Real-time Update**: Spectrogram updates automatically when filters change
+---
 
-### Project Files
+## Project Files (`.ssproj`)
 
-SpectroSampler supports saving and loading project files (`.ssproj` format) that preserve your entire workflow state:
+Project saves capture:
 
-#### What Project Files Save
+- Audio file reference (re-locate if moved)
+- Detection settings, timing guards, filter values
+- Sample metadata (start/end/duration, detector name, enabled flag)
+- Export configuration (format, rate, padding, channels, bit depth)
+- Grid settings and UI layout (splitter sizes, panels hidden/shown)
+- Recent playback state (current view, zoom)
 
-- **Audio file path**: Reference to the loaded audio file
-- **Detected samples**: All segments with their start/end times, detectors, scores, and enabled states
-- **Detection settings**: All processing parameters (mode, thresholds, timing, filters, etc.)
-- **Export settings**: Format, padding, sample rate, bit depth, channel configuration
-- **Grid settings**: Grid mode, snap interval, BPM, subdivisions, visibility
-- **UI state**: Current view range, zoom level
+Files are JSON; you can inspect or version-control them. Autosaves keep the last three revisions in the temp directory.
 
-#### Saving Projects
+---
 
-- **Save Project** (`Ctrl+S`): Save to the current project file, or prompt for a location if no project is open
-- **Save Project As** (`Ctrl+Shift+S`): Always prompt for a new save location
-- **Auto-fill filename**: When saving a new project, the dialog suggests `YYYY-MM-DD_{audio_filename}.ssproj`
+## Troubleshooting
 
-Project files are saved in JSON format and can be opened in any text editor if needed.
+- **FFmpeg not found** – Ensure it is on PATH (`ffmpeg -version`).
+- **`webrtcvad` build errors (Windows)** – Install Visual Studio Build Tools or skip VAD.
+- **GUI feels sluggish on big files** – Lower refresh rate (View → Limit UI Refresh Rate) or disable disabled-sample display.
+- **Overlap resolution keeps popping up** – Set a default choice and tick “Remember my choice,” or adjust detection thresholds to reduce duplicates.
+- **Audio missing when reopening project** – The `.ssproj` stores the file path only; relink if the audio moved.
 
-#### Loading Projects
+---
 
-- **Open Project** (`Ctrl+O`): Open an existing project file
-- **Missing audio file**: If the audio file is moved or missing, SpectroSampler will prompt you to locate it
-- **Automatic restoration**: All settings, samples, and UI state are automatically restored
+## Development Notes
 
-#### Modified Status
-
-- The window title shows an asterisk (*) when the project has unsaved changes
-- The modified flag is set when you:
-  - Load an audio file
-  - Detect samples
-  - Edit samples (move, resize, create, delete, enable/disable)
-  - Change detection or export settings
-  - Modify grid settings
-- Undoing all changes back to the saved state clears the modified flag
-- Closing the window with unsaved changes prompts you to save or discard
-
-#### Project File Format
-
-Project files use the `.ssproj` extension and contain:
-- Version information for compatibility
-- Timestamps (created, modified)
-- All project data in JSON format
-- Audio file path (relative or absolute)
-
-**Note**: Project files store the audio file path, not the audio data itself. Keep your audio files accessible, or use absolute paths if you move projects between computers.
-
-## Development
-
-### Running Tests
-
-**Linux/Mac:**
 ```bash
-make test
-# or
+# Install dev tooling
+pip install -e ".[dev]"
+
+# Run tests
 pytest -q
+
+# Format & lint
+black spectrosampler tests scripts
+ruff check spectrosampler tests scripts
+mypy spectrosampler --ignore-missing-imports
 ```
 
-**Windows:**
-```powershell
-python -m pytest -q
-```
+Make targets (`make format`, `make lint`, `make test`, `make freeze`) are available on macOS/Linux. On Windows, run the equivalent Python commands directly.
 
-### Code Formatting
+### Building Standalone Executables
 
-**Linux/Mac:**
-```bash
-make format
-```
+PyInstaller spec lives in `spectrosampler.spec`. The build script in the repo mirrors:
 
-**Windows:**
-```powershell
-python -m black spectrosampler tests scripts
-```
-
-### Linting
-
-**Linux/Mac:**
-```bash
-make lint
-```
-
-**Windows:**
-```powershell
-python -m ruff check spectrosampler tests scripts
-python -m mypy spectrosampler --ignore-missing-imports
-```
-
-### Troubleshooting (Windows)
-
-- “make is not recognized”: Use the PowerShell commands above instead of `make`.
-- “Microsoft Visual C++ 14.0 or greater is required”: Only needed for `webrtcvad`. Install VS Build Tools, skip VAD, or use a prebuilt wheel.
-- “ffmpeg not found”: Ensure FFmpeg is installed and `ffmpeg` is in PATH. Verify with `ffmpeg -version`.
-
-### Building PyInstaller Executable
-
-**Linux/Mac:**
-```bash
-make freeze
-```
-
-**Windows:**
 ```powershell
 pyinstaller --onefile --name spectrosampler-gui --add-data "spectrosampler/presets;presets" spectrosampler/gui/main.py
 ```
 
-Note: The `Makefile` is for Unix-like systems. On Windows, use PowerShell/cmd directly or install `make` via Chocolatey/WSL.
+Artifacts land in `dist/`; intermediary build products go to `build/`.
 
-## License
+---
 
-MIT
+## Contributing & License
 
-## Contributing
+Contributions are welcome! File an issue or open a pull request for bug fixes, feature proposals, or documentation improvements.
 
-Contributions welcome! Please open an issue or submit a pull request.
-
+SpectroSampler is released under the **MIT License**.
