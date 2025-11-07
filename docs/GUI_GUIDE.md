@@ -16,7 +16,7 @@ Start SpectroSampler with `spectrosampler-gui` (or `python -m spectrosampler.gui
 
 Autosave is enabled by default. If SpectroSampler detects an autosave newer than your last manual save, it will offer to restore it when a project loads.
 
-> Screenshot placeholder: `docs/images/welcome-screen.png`
+![Welcome screen showing recent projects](/docs/images/welcome-screen.png "Welcome screen")
 
 ---
 
