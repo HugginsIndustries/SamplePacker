@@ -5,8 +5,6 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
-import matplotlib.pyplot as plt
-
 from spectrosampler.detectors.base import Segment
 from spectrosampler.utils import ensure_dir
 
@@ -36,6 +34,8 @@ def create_annotated_spectrogram(
     Raises:
         ValueError: If audio cannot be loaded.
     """
+    from matplotlib import pyplot as plt
+
     ensure_dir(output_path.parent)
     logging.debug(
         f"Creating annotated spectrogram: {audio_path} -> {output_path} ({len(segments)} segments)"

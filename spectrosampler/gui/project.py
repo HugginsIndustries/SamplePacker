@@ -10,7 +10,7 @@ from typing import Any
 from spectrosampler import __version__
 from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.grid_manager import GridMode, GridSettings, Subdivision
-from spectrosampler.pipeline import ProcessingSettings
+from spectrosampler.pipeline_settings import ProcessingSettings
 
 logger = logging.getLogger(__name__)
 

@@ -6,9 +6,21 @@ from pathlib import Path
 from typing import Any
 
 from spectrosampler.detectors.base import Segment
-from spectrosampler.pipeline import ProcessingSettings, process_file
+from spectrosampler.pipeline_settings import ProcessingSettings
 
 logger = logging.getLogger(__name__)
+
+
+def _invoke_process_file(
+    input_path: Path,
+    output_dir: Path,
+    settings: ProcessingSettings,
+    cache: Any | None = None,
+) -> dict[str, Any]:
+    """Load pipeline module lazily and run process_file."""
+    from spectrosampler import pipeline as pipeline_module
+
+    return pipeline_module.process_file(input_path, output_dir, settings, cache=cache)
 
 
 def _detect_task(
@@ -24,7 +36,7 @@ def _detect_task(
     Returns:
         Dictionary with processing results.
     """
-    return process_file(input_path, output_dir, settings, cache=None)
+    return _invoke_process_file(input_path, output_dir, settings, cache=None)
 
 
 class PipelineWrapper:
@@ -88,7 +100,7 @@ class PipelineWrapper:
 
         try:
             # Process file
-            result = process_file(
+            result = _invoke_process_file(
                 self.current_audio_path,
                 output_dir,
                 preview_settings,
