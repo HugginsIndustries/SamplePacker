@@ -95,9 +95,11 @@ When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-
 
 ### 4.1 Spectrogram Navigation
 
-- **Zoom** with the scroll wheel (hold `Ctrl` for smaller increments) or use View menu shortcuts (`Ctrl++`, `Ctrl+-`, `Ctrl+0`).
-- **Pan** by dragging in the spectrogram, dragging the navigator rectangle, or using arrow keys.
-- **Timeline jumps** by clicking the time ruler above the spectrogram.
+- **Zoom** by dragging the navigator rectangle edges, or using scroll wheel.
+- **Pan** by dragging the navigator rectangle, or using Alt + scroll wheel.
+- **Timeline jumps** by clicking the navigator bar below the spectrogram.
+
+![Animated overview of zooming and panning](/docs/gifs/spectrogram-nav.gif "Spectrogram navigation demo")
 
 ### 4.2 Using the Sample Player
 
