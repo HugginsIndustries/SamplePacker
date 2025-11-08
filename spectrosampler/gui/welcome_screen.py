@@ -69,7 +69,9 @@ class WelcomeScreen(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        subtitle = QLabel("Turn long field recordings into curated sample packs with a fast, modern desktop workflow.")
+        subtitle = QLabel(
+            "Turn long field recordings into curated sample packs with a fast, modern desktop workflow."
+        )
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(subtitle)
 

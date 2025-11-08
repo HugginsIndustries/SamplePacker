@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from spectrosampler.gui.settings import SettingsManager
-from spectrosampler.pipeline import ProcessingSettings
+from spectrosampler.pipeline_settings import ProcessingSettings
 
 
 class DetectionSettingsPanel(QWidget):
