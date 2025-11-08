@@ -1,10 +1,14 @@
 """Theme system with dark theme and system integration."""
 
+import logging
 import platform
+import subprocess
 from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor, QPalette
+
+logger = logging.getLogger(__name__)
 
 
 class ThemeManager(QObject):
@@ -89,8 +93,8 @@ class ThemeManager(QObject):
                             return "dark"
                         elif scheme == QPalette.ColorScheme.Light:
                             return "light"
-            except Exception:
-                pass
+            except (ImportError, AttributeError, RuntimeError) as exc:
+                logger.debug("Failed to detect Windows theme preference: %s", exc, exc_info=exc)
 
         elif system == "Darwin":  # macOS
             try:
@@ -106,14 +110,12 @@ class ThemeManager(QObject):
                 name = appearance.name()
                 if "Dark" in str(name):
                     return "dark"
-            except Exception:
-                pass
+            except (ImportError, AttributeError, OSError) as exc:
+                logger.debug("Failed to detect macOS theme preference: %s", exc, exc_info=exc)
 
         elif system == "Linux":
             # Check GTK settings
             try:
-                import subprocess
-
                 result = subprocess.run(
                     ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
                     capture_output=True,
@@ -122,8 +124,13 @@ class ThemeManager(QObject):
                 )
                 if result.returncode == 0 and "dark" in result.stdout.lower():
                     return "dark"
-            except Exception:
-                pass
+            except (
+                ImportError,
+                FileNotFoundError,
+                subprocess.SubprocessError,
+                subprocess.TimeoutExpired,
+            ) as exc:
+                logger.debug("Failed to detect Linux theme preference: %s", exc, exc_info=exc)
 
         # Default to dark theme
         return "dark"

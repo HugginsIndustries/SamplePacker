@@ -467,17 +467,31 @@ def process_file(
     # Select detectors
     detectors: list = []
     if settings.mode in ("auto", "voice"):
-        try:
-            detectors.append(VoiceVADDetector(sample_rate=sr, aggressiveness=3))
-        except Exception:
-            pass
+        if sr in (8000, 16000, 32000):
+            try:
+                detectors.append(VoiceVADDetector(sample_rate=sr, aggressiveness=3))
+            except ValueError as exc:
+                logging.warning(
+                    "VoiceVADDetector could not be initialised: %s. Skipping voice detection.",
+                    exc,
+                    exc_info=exc,
+                )
+        else:
+            logging.warning(
+                "VoiceVADDetector skipped because sample rate %s Hz is not supported.", sr
+            )
     if settings.mode in ("auto", "transient"):
         thr_pct: float | None = None
-        try:
-            if isinstance(settings.threshold, (int, float)):
+        if isinstance(settings.threshold, (int, float)):
+            thr_pct = float(settings.threshold)
+        elif isinstance(settings.threshold, str):
+            try:
                 thr_pct = float(settings.threshold)
-        except Exception:
-            thr_pct = None
+            except ValueError as exc:
+                logging.warning(
+                    "Invalid threshold value '%s': %s", settings.threshold, exc, exc_info=exc
+                )
+                thr_pct = None
         tf_kwargs: dict[str, Any] = {"sample_rate": sr}
         if thr_pct is not None and 0.0 < thr_pct < 100.0:
             tf_kwargs["threshold_percentile"] = thr_pct

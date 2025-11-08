@@ -1,5 +1,7 @@
 """Detection settings panel widget for processing parameters."""
 
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -17,6 +19,8 @@ from PySide6.QtWidgets import (
 
 from spectrosampler.gui.settings import SettingsManager
 from spectrosampler.pipeline_settings import ProcessingSettings
+
+logger = logging.getLogger(__name__)
 
 
 class DetectionSettingsPanel(QWidget):
@@ -111,7 +115,8 @@ class DetectionSettingsPanel(QWidget):
             import os
 
             default_workers = max(1, (os.cpu_count() or 4) - 1)
-        except Exception:
+        except (ImportError, AttributeError, OSError, ValueError) as exc:
+            logger.warning("Falling back to default worker count: %s", exc, exc_info=exc)
             default_workers = 3
         # If settings already has max_workers, honor it
         existing_workers = getattr(self._settings, "max_workers", None)
@@ -138,7 +143,12 @@ class DetectionSettingsPanel(QWidget):
             self._show_overlap_dialog_checkbox.setChecked(
                 self._settings_manager.get_show_overlap_dialog()
             )
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore overlap dialog preference, defaulting to enabled: %s",
+                exc,
+                exc_info=exc,
+            )
             self._show_overlap_dialog_checkbox.setChecked(True)
 
         def _on_show_overlap_changed(state: int) -> None:
@@ -163,7 +173,12 @@ class DetectionSettingsPanel(QWidget):
         )
         try:
             behavior = self._settings_manager.get_overlap_default_behavior()
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.warning(
+                "Failed to restore overlap behavior preference, using default: %s",
+                exc,
+                exc_info=exc,
+            )
             behavior = "discard_duplicates"
 
         display_map = {

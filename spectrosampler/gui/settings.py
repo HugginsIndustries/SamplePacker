@@ -172,7 +172,8 @@ class SettingsManager:
         val = self._settings.value("overlapDefaultBehavior", "discard_duplicates")
         try:
             s = str(val)
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.debug("Invalid overlap behavior setting %s: %s", val, exc, exc_info=exc)
             s = "discard_duplicates"
         if s not in ("discard_duplicates", "discard_overlaps", "keep_all"):
             s = "discard_duplicates"

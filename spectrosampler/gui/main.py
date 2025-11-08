@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
+from spectrosampler.audio_io import check_ffmpeg
 from spectrosampler.utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ def main() -> None:
         return
 
     # Import Qt and window lazily to avoid loading GUI stack when not needed
-    from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow
+    from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox
 
     from spectrosampler.gui.main_window import MainWindow
     from spectrosampler.gui.welcome_screen import WelcomeScreen
@@ -115,6 +116,25 @@ def main() -> None:
     app.setApplicationName("SpectroSampler")
     app.setApplicationVersion("0.1.0")
     app.setOrganizationName("SpectroSampler")
+
+    if not check_ffmpeg():
+        logger.error("FFmpeg not detected on PATH. Showing installation guidance dialog.")
+        guidance_lines = [
+            "SpectroSampler requires FFmpeg to process audio but it was not detected on this system.",
+            "",
+            "Windows: Download the FFmpeg release from https://ffmpeg.org/download.html, extract it, and add the 'bin' folder to your PATH environment variable.",
+            "Linux: Install FFmpeg through your package manager (for example: 'sudo apt install ffmpeg') and ensure it is available on PATH.",
+            "",
+            "After installing FFmpeg, restart SpectroSampler.",
+        ]
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Critical)
+        msg_box.setWindowTitle("FFmpeg Not Found")
+        msg_box.setText("\n".join(guidance_lines))
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
+        msg_box.setDefaultButton(QMessageBox.StandardButton.Close)
+        msg_box.exec()
+        sys.exit(1)
 
     # Check for auto-save recovery (before showing welcome screen)
     recovery_path: Path | None = None

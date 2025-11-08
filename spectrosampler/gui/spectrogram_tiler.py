@@ -3,7 +3,7 @@
 import logging
 from collections import OrderedDict
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from functools import cached_property
 from pathlib import Path
 from typing import Any, cast
@@ -84,7 +84,10 @@ class SpectrogramTiler:
             import os
 
             max_workers = max(2, min(8, (os.cpu_count() or 4) // 2))
-        except Exception:
+        except (ImportError, AttributeError, OSError, ValueError) as exc:
+            logger.warning(
+                "Falling back to default spectrogram worker count: %s", exc, exc_info=exc
+            )
             max_workers = 4
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="SpecTile")
         self._colormap = self._build_colormap_lut()
@@ -311,8 +314,8 @@ class SpectrogramTiler:
         if len(self._tile_cache) > self._max_cache_items:
             try:
                 self._tile_cache.popitem(last=False)
-            except Exception:
-                pass
+            except KeyError as exc:
+                logger.debug("Spectrogram tile cache pop failed: %s", exc, exc_info=exc)
         return tile
 
     def generate_overview(
@@ -526,7 +529,8 @@ class SpectrogramTiler:
             indices = np.clip(indices, 0, 255).astype(np.uint8)
             rgba = self._colormap[indices]
             return cast(npt.NDArray[np.uint8], rgba)
-        except Exception:
+        except (FloatingPointError, OverflowError, ValueError, ZeroDivisionError, TypeError) as exc:
+            logger.warning("Failed to convert spectrogram data to RGBA: %s", exc, exc_info=exc)
             # Fallback to zeros on any failure
             return np.zeros((*spec_db.shape, 4), dtype=np.uint8)
 
@@ -544,6 +548,8 @@ class SpectrogramTiler:
         If callback is provided, it will be called with the resulting tile in the worker's completion context.
         """
 
+        cache_key = self._get_cache_key(audio_path, start_time, end_time)
+
         def task() -> SpectrogramTile:
             return self.generate_tile(audio_path, start_time, end_time, sample_rate=sample_rate)
 
@@ -551,11 +557,42 @@ class SpectrogramTiler:
         if callback is not None:
 
             def _done(f: Future) -> None:
+                exc = f.exception()
+                if exc is not None:
+                    if isinstance(exc, CancelledError):
+                        logger.debug("Spectrogram tile request cancelled: %s", cache_key)
+                    else:
+                        logger.error(
+                            "Spectrogram tile generation failed for %s: %s",
+                            cache_key,
+                            exc,
+                            exc_info=exc,
+                        )
+                    return
                 try:
                     tile = f.result()
+                except CancelledError:
+                    logger.debug(
+                        "Spectrogram tile request cancelled during result fetch: %s", cache_key
+                    )
+                    return
+                except RuntimeError as runtime_exc:
+                    logger.error(
+                        "Spectrogram tile future raised RuntimeError for %s: %s",
+                        cache_key,
+                        runtime_exc,
+                        exc_info=runtime_exc,
+                    )
+                    return
+                try:
                     callback(tile)
-                except Exception:
-                    pass
+                except (RuntimeError, TypeError, ValueError) as cb_exc:
+                    logger.error(
+                        "Spectrogram tile callback failed for %s: %s",
+                        cache_key,
+                        cb_exc,
+                        exc_info=cb_exc,
+                    )
 
             fut.add_done_callback(_done)
         return fut

@@ -256,9 +256,12 @@ def save_project(project_data: ProjectData, path: Path) -> None:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data_dict, f, indent=2, ensure_ascii=False)
         logger.info(f"Project saved to {path}")
-    except Exception as e:
-        logger.error(f"Failed to save project to {path}: {e}")
-        raise OSError(f"Failed to save project file: {e}") from e
+    except OSError as exc:
+        logger.error("Failed to save project to %s: %s", path, exc, exc_info=exc)
+        raise OSError(f"Failed to save project file: {exc}") from exc
+    except (TypeError, ValueError) as exc:
+        logger.error("Project data serialisation failed for %s: %s", path, exc, exc_info=exc)
+        raise ValueError(f"Project data could not be serialised: {exc}") from exc
 
 
 def load_project(path: Path) -> ProjectData:
@@ -281,12 +284,12 @@ def load_project(path: Path) -> ProjectData:
     try:
         with open(path, encoding="utf-8") as f:
             data_dict = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in project file {path}: {e}")
-        raise ValueError(f"Invalid project file format: {e}") from e
-    except Exception as e:
-        logger.error(f"Failed to read project file {path}: {e}")
-        raise OSError(f"Failed to read project file: {e}") from e
+    except json.JSONDecodeError as exc:
+        logger.error("Invalid JSON in project file %s: %s", path, exc, exc_info=exc)
+        raise ValueError(f"Invalid project file format: {exc}") from exc
+    except OSError as exc:
+        logger.error("Failed to read project file %s: %s", path, exc, exc_info=exc)
+        raise OSError(f"Failed to read project file: {exc}") from exc
 
     # Validate version
     version = data_dict.get("version", "0.0")

@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 2 items, P1: 26 items, P2: 18 items_
+_Summary: P0: 0 items, P1: 26 items, P2: 18 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -42,7 +42,7 @@ _Summary: P0: 2 items, P1: 26 items, P2: 18 items_
   - Acceptance: When enabled, playback advances on end-of-media.
 
 ### Error Handling & Validation
-- [ ] [P0] FFmpeg availability check at app startup
+  - [x] [P0] FFmpeg availability check at app startup
   - Call `check_ffmpeg()` on launch and show a blocking, user-friendly dialog with install guidance if missing.
   - Acceptance: App won't proceed without acknowledging guidance; includes Windows/Linux instructions.
 - [ ] [P1] Improve audio loading failure messages
@@ -56,7 +56,7 @@ _Summary: P0: 2 items, P1: 26 items, P2: 18 items_
   - Acceptance: Warning dialog includes “Try alternate resample” that re-runs analysis.
 
 ### Code Quality & Robustness
-- [ ] [P0] Replace bare `except Exception:` with specific exceptions
+  - [x] [P0] Replace bare `except Exception:` with specific exceptions
   - Widespread in GUI and core; keep user-friendly messages while logging full trace.
   - Acceptance: Zero bare `except` usages in repo; logging includes exception type and message.
 - [ ] [P2] Complete code TODOs (targeted)

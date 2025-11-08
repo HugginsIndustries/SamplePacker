@@ -23,6 +23,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 
 - **Python 3.11 or newer**
 - **FFmpeg** reachable on your PATH (used for decoding/encoding)
+- SpectroSampler verifies FFmpeg at startup and shows a blocking dialog with installation guidance (Windows + Linux) if it is missing, so install/verify FFmpeg before launching.
 - Optional: **Visual C++ Build Tools** if you plan to install the VAD detector (`webrtcvad`) on Windows
 
 

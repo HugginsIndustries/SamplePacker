@@ -13,11 +13,14 @@ Rows:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
 
 from spectrosampler.detectors.base import Segment
+
+logger = logging.getLogger(__name__)
 
 
 class SampleTableModel(QAbstractTableModel):
@@ -210,7 +213,8 @@ class SampleTableModel(QAbstractTableModel):
                     )
                     self.durationEdited.emit(col, new_duration)
                     return True
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.debug("Invalid table edit value %s at row %s: %s", value, row, exc, exc_info=exc)
             return False
         return False
 

@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from spectrosampler.audio_io import FFmpegError
 from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.autosave import AutoSaveManager
 from spectrosampler.gui.detection_manager import DetectionManager
@@ -282,18 +284,18 @@ class MainWindow(QMainWindow):
         # Sizing: fixed column width and uniform row heights
         try:
             self._sample_table_view.verticalHeader().setDefaultSectionSize(30)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError) as exc:
+            logger.debug("Unable to set sample table row height: %s", exc, exc_info=exc)
         fixed_col_width = 140
         # Apply a default for first few columns; more columns will use the same width
         try:
             self._sample_table_view.horizontalHeader().setDefaultSectionSize(fixed_col_width)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError) as exc:
+            logger.debug("Unable to set sample table column width: %s", exc, exc_info=exc)
         # Calculate height: header + 8 rows * 30 + scrollbar height + small margin
         try:
             scrollbar_h = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        except Exception:
+        except RuntimeError:
             scrollbar_h = 18
         table_height = (
             self._sample_table_view.horizontalHeader().height() + (8 * 30) + scrollbar_h + 12
@@ -925,19 +927,19 @@ class MainWindow(QMainWindow):
             # Ensure main spectrogram is visible immediately on load
             try:
                 self._spectrogram_widget.preload_current_view()
-            except Exception:
-                pass
+            except (RuntimeError, ValueError, OSError) as exc:
+                logger.debug("Failed to preload spectrogram view: %s", exc, exc_info=exc)
 
             # Note: Loading screen will be hidden after overview generation completes
             # (via _on_overview_finished or _on_overview_error)
 
-        except Exception as e:
+        except (FFmpegError, OSError, RuntimeError, ValueError) as e:
             # Cancel overview generation if it was started
             if self._overview_manager.is_generating():
                 self._overview_manager.cancel()
             self._loading_screen.hide_overlay()
             QMessageBox.critical(self, "Error", f"Failed to load audio file:\n{str(e)}")
-            logger.error(f"Failed to load audio file: {e}")
+            logger.error("Failed to load audio file: %s", e, exc_info=e)
 
     def _collect_project_data(self) -> ProjectData:
         """Collect current project data from MainWindow.
@@ -1046,7 +1048,7 @@ class MainWindow(QMainWindow):
                 self.load_audio_file(audio_path)
                 # Note: Loading screen will be hidden after overview generation completes
                 # (via _on_overview_finished or _on_overview_error)
-            except Exception as e:
+            except (FFmpegError, OSError, RuntimeError, ValueError) as e:
                 # Cancel overview generation if it was started
                 if self._overview_manager.is_generating():
                     self._overview_manager.cancel()
@@ -1056,7 +1058,7 @@ class MainWindow(QMainWindow):
                     "Error",
                     f"Failed to load audio file:\n{str(e)}\n\nProject could not be loaded.",
                 )
-                logger.error(f"Failed to load audio file for project: {e}")
+                logger.error("Failed to load audio file for project: %s", e, exc_info=e)
                 return
 
         # Restore detection settings
@@ -1077,8 +1079,8 @@ class MainWindow(QMainWindow):
                 # Update other settings controls...
                 # For now, we'll just update the mode and threshold as examples
                 # A more complete implementation would update all controls
-            except Exception as e:
-                logger.warning(f"Failed to restore detection settings: {e}")
+            except (ValueError, TypeError, KeyError, RuntimeError) as e:
+                logger.warning("Failed to restore detection settings: %s", e, exc_info=e)
 
         # Restore export settings
         if data.export_settings:
@@ -1126,8 +1128,8 @@ class MainWindow(QMainWindow):
                     elif self._grid_settings.mode == GridMode.MUSICAL_BAR:
                         self._grid_mode_musical_action.setChecked(True)
                         self._grid_mode_free_action.setChecked(False)
-            except Exception as e:
-                logger.warning(f"Failed to restore grid settings: {e}")
+            except (ValueError, TypeError, KeyError) as e:
+                logger.warning("Failed to restore grid settings: %s", e, exc_info=e)
 
         # Restore segments
         if self._pipeline_wrapper:
@@ -1138,8 +1140,8 @@ class MainWindow(QMainWindow):
                     self._spectrogram_widget.set_segments(self._get_display_segments())
                     self._update_sample_table(segments)
                     self._update_navigator_markers()
-                except Exception as e:
-                    logger.warning(f"Failed to restore segments: {e}")
+                except (ValueError, KeyError, TypeError) as e:
+                    logger.warning("Failed to restore segments: %s", e, exc_info=e)
             else:
                 # No segments in project - clear segments
                 self._pipeline_wrapper.current_segments = []
@@ -1163,8 +1165,8 @@ class MainWindow(QMainWindow):
                 # Restore zoom level
                 if hasattr(data.ui_state, "zoom_level"):
                     self._spectrogram_widget.set_zoom_level(data.ui_state.zoom_level)
-            except Exception as e:
-                logger.warning(f"Failed to restore UI state: {e}")
+            except (AttributeError, ValueError, TypeError) as e:
+                logger.warning("Failed to restore UI state: %s", e, exc_info=e)
 
         # Clear modified flag, clear undo/redo stacks, and set baseline
         self._project_modified = False
@@ -1225,10 +1227,13 @@ class MainWindow(QMainWindow):
                 try:
                     existing_data = load_project(path)
                     project_data.created = existing_data.created
-                except Exception:
+                except (OSError, ValueError) as exc:
                     # If we can't load existing, use current time
                     from datetime import datetime
 
+                    logger.warning(
+                        "Could not load existing project metadata: %s", exc, exc_info=exc
+                    )
                     project_data.created = datetime.utcnow().isoformat() + "Z"
 
             # Save project
@@ -1255,9 +1260,9 @@ class MainWindow(QMainWindow):
             logger.info(f"Project saved to {path}")
             return True
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             QMessageBox.critical(self, "Error", f"Failed to save project:\n{str(e)}")
-            logger.error(f"Failed to save project: {e}")
+            logger.error("Failed to save project: %s", e, exc_info=e)
             return False
 
     def load_project_file(self, path: Path) -> bool:
@@ -1310,10 +1315,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Invalid project file:\n{str(e)}")
             logger.error(f"Invalid project file: {e}")
             return False
-        except Exception as e:
+        except (FFmpegError, OSError, RuntimeError) as e:
             self._loading_screen.hide_overlay()
             QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
-            logger.error(f"Failed to load project: {e}")
+            logger.error("Failed to load project: %s", e, exc_info=e)
             return False
 
     def closeEvent(self, event) -> None:
@@ -1576,8 +1581,8 @@ class MainWindow(QMainWindow):
         self._navigator.set_overview_tile(tile)
         try:
             self._spectrogram_widget.set_overview_tile(tile)
-        except Exception:
-            pass
+        except (RuntimeError, ValueError) as exc:
+            logger.debug("Failed to apply overview tile: %s", exc, exc_info=exc)
 
         # Hide loading screen
         self._loading_screen.hide_overlay()
@@ -1625,7 +1630,8 @@ class MainWindow(QMainWindow):
                     self._existing_segments_buffer = copy.deepcopy(existing)
                 else:
                     self._existing_segments_buffer = []
-            except Exception:
+            except (AttributeError, TypeError) as exc:
+                logger.debug("Failed to copy existing segments buffer: %s", exc, exc_info=exc)
                 self._existing_segments_buffer = []
 
         # Show loading screen for detection
@@ -1682,7 +1688,8 @@ class MainWindow(QMainWindow):
                     try:
                         default_behavior = self._settings_manager.get_overlap_default_behavior()
                         show_dialog = self._settings_manager.get_show_overlap_dialog()
-                    except Exception:
+                    except (RuntimeError, ValueError, TypeError) as exc:
+                        logger.debug("Overlap settings unavailable: %s", exc, exc_info=exc)
                         default_behavior = "discard_duplicates"
                         show_dialog = True
 
@@ -1744,15 +1751,20 @@ class MainWindow(QMainWindow):
                             self._settings_manager.set_overlap_default_behavior(
                                 behavior or "discard_duplicates"
                             )
-                        except Exception:
-                            pass
+                        except (RuntimeError, ValueError) as exc:
+                            logger.debug(
+                                "Failed to persist overlap dialog preference: %s", exc, exc_info=exc
+                            )
 
                     final_segments = existing_segments + filtered_new
                 else:
                     # No conflicts; simple merge
                     final_segments = existing_segments + segments
-            except Exception:
+            except (RuntimeError, ValueError) as exc:
                 # Fallback: simple merge on error
+                logger.warning(
+                    "Overlap reconciliation failed, merging segments: %s", exc, exc_info=exc
+                )
                 final_segments = existing_segments + segments
 
         if self._pipeline_wrapper:
@@ -1815,8 +1827,8 @@ class MainWindow(QMainWindow):
         try:
             if self._sample_table_model.columnCount() > index:
                 self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, index))
-        except Exception:
-            pass
+        except (RuntimeError, AttributeError) as exc:
+            logger.debug("Failed to update sample table selection: %s", exc, exc_info=exc)
         self._spectrogram_widget.set_selected_index(index)
 
         # Don't update player widget - player should only show info for currently playing sample
@@ -2047,20 +2059,23 @@ class MainWindow(QMainWindow):
             # Disconnect previous handlers to avoid multiple connections
             try:
                 self._media_player.mediaStatusChanged.disconnect()
-            except Exception:
-                pass
+            except (TypeError, RuntimeError) as exc:
+                logger.debug("mediaStatusChanged disconnect failed: %s", exc, exc_info=exc)
 
             # Clean up previous temp file
             if self._temp_playback_file and self._temp_playback_file.exists():
                 try:
                     self._temp_playback_file.unlink()
-                except Exception:
-                    pass
+                except OSError as exc:
+                    logger.debug(
+                        "Failed to remove temporary playback file %s: %s",
+                        self._temp_playback_file,
+                        exc,
+                        exc_info=exc,
+                    )
                 self._temp_playback_file = None
 
             # Extract segment to temporary file with unique filename
-            import subprocess
-
             temp_dir = Path(tempfile.gettempdir())
             unique_id = uuid.uuid4().hex
             self._temp_playback_file = temp_dir / f"spectrosampler_playback_{unique_id}.wav"
@@ -2140,8 +2155,13 @@ class MainWindow(QMainWindow):
                         try:
                             self._temp_playback_file.unlink()
                             self._temp_playback_file = None
-                        except Exception:
-                            pass
+                        except OSError as exc:
+                            logger.debug(
+                                "Failed to remove temporary playback file %s: %s",
+                                self._temp_playback_file,
+                                exc,
+                                exc_info=exc,
+                            )
 
             # Handler to wait for media to load before playing
             def on_media_status_changed(status):
@@ -2165,8 +2185,8 @@ class MainWindow(QMainWindow):
             url = QUrl.fromLocalFile(str(self._temp_playback_file))
             self._media_player.setSource(url)
 
-        except Exception as e:
-            logger.error(f"Failed to play segment: {e}")
+        except (subprocess.SubprocessError, OSError, RuntimeError, ValueError) as e:
+            logger.error("Failed to play segment: %s", e, exc_info=e)
             QMessageBox.warning(self, "Playback Error", f"Failed to play audio segment:\n{str(e)}")
 
     def _on_navigator_view_changed(self, start_time: float, end_time: float) -> None:
@@ -2235,8 +2255,8 @@ class MainWindow(QMainWindow):
         # Disconnect mediaStatusChanged signal to prevent restart callbacks
         try:
             self._media_player.mediaStatusChanged.disconnect()
-        except Exception:
-            pass
+        except (TypeError, RuntimeError) as exc:
+            logger.debug("mediaStatusChanged disconnect during stop failed: %s", exc, exc_info=exc)
 
         # Set stop flag to prevent restart
         self._playback_stopped = True
@@ -2551,8 +2571,8 @@ class MainWindow(QMainWindow):
                     Qt.Checked if seg.attrs["enabled"] else Qt.Unchecked,
                     Qt.CheckStateRole,
                 )
-            except Exception:
-                pass
+            except (RuntimeError, ValueError) as exc:
+                logger.debug("Failed to update sample enabled state: %s", exc, exc_info=exc)
             self._spectrogram_widget.set_segments(self._get_display_segments())
             self._update_navigator_markers()
 
@@ -2574,8 +2594,8 @@ class MainWindow(QMainWindow):
                     Qt.Checked if s.attrs["enabled"] else Qt.Unchecked,
                     Qt.CheckStateRole,
                 )
-            except Exception:
-                pass
+            except (RuntimeError, ValueError) as exc:
+                logger.debug("Failed to update sample enabled state: %s", exc, exc_info=exc)
         self._spectrogram_widget.set_segments(self._get_display_segments())
         self._update_navigator_markers()
 
@@ -2615,7 +2635,8 @@ class MainWindow(QMainWindow):
                     self, "Export Complete", f"Exported {count} samples to:\n{output_dir}"
                 )
                 self._status_label.setText(f"Exported {count} samples")
-            except Exception as e:
+            except (FFmpegError, OSError, ValueError, RuntimeError) as e:
+                logger.error("Failed to export samples: %s", e, exc_info=e)
                 QMessageBox.critical(self, "Export Error", f"Failed to export samples:\n{str(e)}")
 
     def _on_about(self) -> None:
@@ -2637,8 +2658,8 @@ class MainWindow(QMainWindow):
                 handler.setLevel(logging.DEBUG if enabled else logging.INFO)
             if hasattr(self, "_status_label"):
                 self._status_label.setText("Verbose Log: ON" if enabled else "Verbose Log: OFF")
-        except Exception as e:
-            logger.error(f"Failed to toggle verbose log: {e}")
+        except (AttributeError, ValueError, RuntimeError) as e:
+            logger.error("Failed to toggle verbose log: %s", e, exc_info=e)
 
     def _push_undo_state(self) -> None:
         """Push current segments state to undo stack."""
@@ -2917,8 +2938,8 @@ class MainWindow(QMainWindow):
                 and self._pipeline_wrapper
             ):
                 self._pipeline_wrapper.current_segments.sort(key=lambda s: s.start)
-        except Exception:
-            pass
+        except (AttributeError, TypeError) as exc:
+            logger.debug("Auto reorder failed: %s", exc, exc_info=exc)
 
     # Export menu handlers
     def _on_export_pre_pad_settings(self) -> None:

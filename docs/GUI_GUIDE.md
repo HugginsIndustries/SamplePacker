@@ -13,6 +13,7 @@ Start SpectroSampler with `spectrosampler-gui` (or `python -m spectrosampler.gui
 - **Create New Project** – Start from an empty session.
 - **Open Project...** – Browse for an existing `.ssproj`.
 - **Recent Projects / Audio Files** – Double-click to reopen; buttons clear the history.
+- At startup SpectroSampler checks that FFmpeg is available on your PATH. If it is missing, a blocking dialog explains how to install/enable FFmpeg on Windows and Linux before the GUI continues.
 
 Autosave is enabled by default. If SpectroSampler detects an autosave newer than your last manual save, it will offer to restore it when a project loads.
 

@@ -63,8 +63,8 @@ class SpectrogramWidget(QWidget):
         try:
             self._ax.xaxis.set_major_locator(MaxNLocator(nbins=10))
             self._ax.yaxis.set_major_locator(MaxNLocator(nbins=8))
-        except Exception:
-            pass
+        except (RuntimeError, ValueError) as exc:
+            logger.debug("Failed to set initial tick locators: %s", exc, exc_info=exc)
 
         # Spectrogram data
         self._tiler = SpectrogramTiler()
@@ -155,6 +155,13 @@ class SpectrogramWidget(QWidget):
         # Install event filter on canvas for double-click detection
         self._canvas.installEventFilter(self)
 
+    def _emit_view_changed(self) -> None:
+        """Emit view_changed signal with defensive logging."""
+        try:
+            self.view_changed.emit(self._start_time, self._end_time)
+        except (RuntimeError, TypeError) as exc:
+            logger.warning("Failed to emit view_changed signal: %s", exc, exc_info=exc)
+
     def set_duration(self, duration: float) -> None:
         """Set total audio duration.
 
@@ -175,10 +182,7 @@ class SpectrogramWidget(QWidget):
         self._end_time = max(self._start_time, min(end_time, self._duration))
         self._update_display()
         # Notify listeners to allow external widgets (navigator) to sync
-        try:
-            self.view_changed.emit(self._start_time, self._end_time)
-        except Exception:
-            pass
+        self._emit_view_changed()
 
     def set_zoom_level(self, zoom: float) -> None:
         """Set zoom level.
@@ -239,10 +243,7 @@ class SpectrogramWidget(QWidget):
             audio_path: Path to audio file or None.
         """
         self._audio_path = audio_path
-        try:
-            self._tiler.clear_cache()
-        except Exception:
-            pass
+        self._tiler.clear_cache()
         self._update_display()
 
     def set_overview_tile(self, tile: Any) -> None:
@@ -269,8 +270,8 @@ class SpectrogramWidget(QWidget):
                 self._im = None  # ensure creation if not present
                 self._draw_overlays()
                 self._update_display()
-        except Exception:
-            pass
+        except (RuntimeError, ValueError, OSError) as exc:
+            logger.error("Failed to preload spectrogram view: %s", exc, exc_info=exc)
 
     def set_frequency_range(self, fmin: float | None = None, fmax: float | None = None) -> None:
         """Set frequency range for spectrogram.
@@ -281,10 +282,7 @@ class SpectrogramWidget(QWidget):
         """
         self._tiler.fmin = fmin
         self._tiler.fmax = fmax
-        try:
-            self._tiler.clear_cache()
-        except Exception:
-            pass
+        self._tiler.clear_cache()
         self._update_display()
 
     def set_theme_colors(self, colors: dict[str, QColor]) -> None:
@@ -320,39 +318,45 @@ class SpectrogramWidget(QWidget):
             # Fewer ticks for very long windows to avoid MAXTICKS warnings
             nbins = 10 if view_dur > 600 else 12
             self._ax.xaxis.set_major_locator(MaxNLocator(nbins=nbins))
-        except Exception:
-            pass
+        except (RuntimeError, ValueError) as exc:
+            logger.debug("Failed to update tick locators: %s", exc, exc_info=exc)
         if current_tile_matches and self._current_tile.spectrogram.size > 0:
             try:
                 self._apply_tile_to_image(self._current_tile)
-            except Exception:
-                pass
+            except (RuntimeError, ValueError) as exc:
+                logger.error("Failed to apply current spectrogram tile: %s", exc, exc_info=exc)
         elif self._overview_tile is not None and self._overview_tile.spectrogram.size > 0:
             try:
                 # Extract/crop overview to current view window
                 self._apply_overview_to_image()
-            except Exception:
-                pass
+            except (RuntimeError, ValueError) as exc:
+                logger.error("Failed to apply overview spectrogram tile: %s", exc, exc_info=exc)
 
         # Async request for current view
         if self._audio_path and self._audio_path.exists():
 
             def _on_ready(tile):
                 # Ensure UI updates occur on the GUI thread
-                def _apply():
+                def _apply() -> None:
                     self._current_tile = tile
                     try:
                         self._apply_tile_to_image(tile)
-                        self._draw_overlays()
-                    except Exception:
-                        pass
+                    except (RuntimeError, ValueError) as exc:
+                        logger.error(
+                            "Failed to update spectrogram with async tile: %s", exc, exc_info=exc
+                        )
+                        return
+                    self._draw_overlays()
                     # Use draw_idle to coalesce repaints
                     self._canvas.draw_idle()
 
                 try:
                     QTimer.singleShot(0, _apply)
-                except Exception:
+                except RuntimeError as exc:
                     # Fallback in case QTimer fails in this context
+                    logger.debug(
+                        "QTimer.singleShot failed, applying tile directly: %s", exc, exc_info=exc
+                    )
                     _apply()
 
             try:
@@ -364,8 +368,8 @@ class SpectrogramWidget(QWidget):
                     callback=_on_ready,
                 )
                 self._tiler.prefetch_neighbors(self._audio_path, self._start_time, self._end_time)
-            except Exception:
-                pass
+            except (RuntimeError, ValueError, OSError) as exc:
+                logger.error("Failed to request spectrogram tile: %s", exc, exc_info=exc)
         else:
             if not self._audio_path:
                 logger.debug("No audio path set, skipping spectrogram generation")
@@ -395,14 +399,14 @@ class SpectrogramWidget(QWidget):
         for a in self._grid_artists:
             try:
                 a.remove()
-            except Exception:
-                pass
+            except (ValueError, RuntimeError) as exc:
+                logger.debug("Failed to remove grid artist: %s", exc, exc_info=exc)
         self._grid_artists.clear()
         for a in self._segment_artists:
             try:
                 a.remove()
-            except Exception:
-                pass
+            except (ValueError, RuntimeError) as exc:
+                logger.debug("Failed to remove segment artist: %s", exc, exc_info=exc)
         self._segment_artists.clear()
 
         # Grid (on top of spectrogram) with line count limiting
@@ -455,7 +459,8 @@ class SpectrogramWidget(QWidget):
             is_enabled = True
             try:
                 is_enabled = seg.attrs.get("enabled", True)
-            except Exception:
+            except (AttributeError, TypeError) as exc:
+                logger.debug("Segment attrs missing 'enabled': %s", exc, exc_info=exc)
                 is_enabled = True
             if not is_enabled and not self._show_disabled:
                 continue
@@ -578,8 +583,8 @@ class SpectrogramWidget(QWidget):
                 else:
                     self._im.set_data(spec_normalized)
                     self._im.set_extent(extent)
-        except Exception:
-            pass
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.error("Failed to draw spectrogram tile: %s", exc, exc_info=exc)
 
     def _apply_overview_to_image(self) -> None:
         """Extract the current view window from the overview tile and display it."""
@@ -665,8 +670,8 @@ class SpectrogramWidget(QWidget):
                 else:
                     self._im.set_data(spec_normalized)
                     self._im.set_extent(extent)
-        except Exception:
-            pass
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.error("Failed to draw overview spectrogram: %s", exc, exc_info=exc)
 
     def _get_segment_color(self, detector: str) -> str:
         """Get color for detector type.
@@ -1057,10 +1062,7 @@ class SpectrogramWidget(QWidget):
         self._end_time = new_start + new_dur
         self._update_display()
         # Notify listeners
-        try:
-            self.view_changed.emit(self._start_time, self._end_time)
-        except Exception:
-            pass
+        self._emit_view_changed()
 
     def eventFilter(self, obj, event) -> bool:
         """Event filter for double-click detection and ESC key cancellation.
@@ -1088,15 +1090,15 @@ class SpectrogramWidget(QWidget):
                             ad = event.angleDelta()
                             dy = int(ad.y()) if hasattr(ad, "y") else int(ad.y())
                             dx = int(ad.x()) if hasattr(ad, "x") else int(ad.x())
-                        except Exception:
-                            pass
+                        except (AttributeError, TypeError) as exc:
+                            logger.debug("Wheel angleDelta unavailable: %s", exc, exc_info=exc)
                         if dy == 0 and dx == 0:
                             try:
                                 pd = event.pixelDelta()
                                 dy = int(pd.y()) if hasattr(pd, "y") else int(pd.y())
                                 dx = int(pd.x()) if hasattr(pd, "x") else int(pd.x())
-                            except Exception:
-                                pass
+                            except (AttributeError, TypeError) as exc:
+                                logger.debug("Wheel pixelDelta unavailable: %s", exc, exc_info=exc)
 
                         if dy != 0 or dx != 0:
                             if dy != 0:
@@ -1110,15 +1112,11 @@ class SpectrogramWidget(QWidget):
                             self._start_time = new_start
                             self._end_time = new_start + view_dur
                             self._update_display()
-                            # Notify listeners
-                            try:
-                                self.view_changed.emit(self._start_time, self._end_time)
-                            except Exception:
-                                pass
+                            self._emit_view_changed()
                             event.accept()
                             return True
-                except Exception:
-                    pass
+                except (RuntimeError, ValueError, TypeError) as exc:
+                    logger.debug("ALT wheel handling failed: %s", exc, exc_info=exc)
 
             if event.type() == QEvent.Type.MouseButtonDblClick:
                 mouse_event = event
@@ -1144,8 +1142,10 @@ class SpectrogramWidget(QWidget):
                             self.sample_selected.emit(clicked_index)
                             self.sample_play_requested.emit(clicked_index)
                             return True
-                    except Exception:
-                        pass
+                    except (RuntimeError, ValueError) as exc:
+                        logger.debug(
+                            "Double-click coordinate transform failed: %s", exc, exc_info=exc
+                        )
             elif event.type() == QEvent.Type.KeyPress:
                 from PySide6.QtGui import QKeyEvent
 

@@ -66,8 +66,10 @@ def get_audio_info(file_path: Path) -> dict:
             try:
                 bit_depth = int(val)
                 break
-            except Exception:
-                pass
+            except (TypeError, ValueError) as exc:
+                logging.debug(
+                    "Failed to parse bit depth '%s' using key %s: %s", val, key, exc, exc_info=exc
+                )
     # Fallback to sample_fmt inference
     if not bit_depth:
         sample_fmt = astream.get("sample_fmt", "")

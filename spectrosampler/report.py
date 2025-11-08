@@ -8,6 +8,8 @@ from typing import Any, cast
 from spectrosampler.detectors.base import Segment
 from spectrosampler.utils import ensure_dir
 
+logger = logging.getLogger(__name__)
+
 
 def create_annotated_spectrogram(
     audio_path: Path,
@@ -85,8 +87,8 @@ def create_annotated_spectrogram(
         ax.tick_params(axis="x", which="minor", length=4, width=0.8, colors="black")
         ax.spines["bottom"].set_color("black")
         ax.xaxis.label.set_color("black")
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError) as exc:
+        logger.warning("Failed to configure spectrogram tick marks: %s", exc, exc_info=exc)
     colors = {
         "voice_vad": "#00FFAA",
         "transient_flux": "#FFCC00",
