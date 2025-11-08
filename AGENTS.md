@@ -6,7 +6,8 @@ These rules apply to any automated assistant working in this repository. Follow 
 2. **Maintain code quality.** Use the project's established formatting tools and idioms. Prefer clear structure, descriptive naming, defensive programming, and add tests when behavior could regress.
 3. **Review and maintain `TODO.md`.** Before starting work, read the entire `TODO.md`. When tasks touch roadmap items, update the relevant entries using the maintainer guide at the top of that file (imperative phrasing, priority tags, acceptance bullets, summary counts, etc.).
 4. **Ask when unsure.** If any requirement, scope, or detail is ambiguous, stop and request clarification before proceeding. Never make assumptions about desired behaviour or acceptance criteria.
-5. **Run relevant checks.** Before handing back changes, run these commands in order: `pytest -q`, `ruff check spectrosampler tests scripts`, `mypy spectrosampler --ignore-missing-imports`, `black spectrosampler tests scripts`. If any command reports issues, resolve them and re-run until they pass; use `--fix` when a tool supports it.
+5. **Install dev tooling.** Before running project checks, install development dependencies with `pip install -e ".[dev]"`.
+6. **Run relevant checks.** Before handing back changes, run these commands in order: `pytest -q`, `ruff check spectrosampler tests scripts`, `mypy spectrosampler --ignore-missing-imports`, `black spectrosampler tests scripts`. If any command reports issues, resolve them and re-run until they pass; use `--fix` when a tool supports it.
 
 Compliance with these rules is mandatory for every contribution.
 
