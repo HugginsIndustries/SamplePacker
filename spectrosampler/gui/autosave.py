@@ -130,9 +130,9 @@ class AutoSaveManager(QObject):
             logger.debug(f"Auto-save completed: {autosave_path}")
             self.autosave_completed.emit(autosave_path)
             return True
-        except Exception as e:
-            error_msg = f"Auto-save failed: {e}"
-            logger.error(error_msg, exc_info=True)
+        except (OSError, ValueError) as exc:
+            error_msg = f"Auto-save failed: {exc}"
+            logger.error(error_msg, exc_info=exc)
             self.autosave_error.emit(error_msg)
             return False
 
@@ -157,8 +157,10 @@ class AutoSaveManager(QObject):
             try:
                 file_path.unlink()
                 logger.debug(f"Deleted old auto-save file: {file_path}")
-            except Exception as e:
-                logger.warning(f"Failed to delete auto-save file {file_path}: {e}")
+            except OSError as exc:
+                logger.warning(
+                    "Failed to delete auto-save file %s: %s", file_path, exc, exc_info=exc
+                )
 
     def cleanup_all_autosaves(self) -> None:
         """Delete all auto-save files."""
@@ -167,5 +169,7 @@ class AutoSaveManager(QObject):
             try:
                 file_path.unlink()
                 logger.debug(f"Deleted auto-save file: {file_path}")
-            except Exception as e:
-                logger.warning(f"Failed to delete auto-save file {file_path}: {e}")
+            except OSError as exc:
+                logger.warning(
+                    "Failed to delete auto-save file %s: %s", file_path, exc, exc_info=exc
+                )

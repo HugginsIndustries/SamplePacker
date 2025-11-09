@@ -6,6 +6,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from spectrosampler.audio_io import FFmpegError
 from spectrosampler.gui.pipeline_wrapper import PipelineWrapper
 
 logger = logging.getLogger(__name__)
@@ -33,10 +34,10 @@ class DetectionWorker(QThread):
             result = self.pipeline_wrapper.detect_samples(self.output_dir)
             if not self._cancelled:
                 self.finished.emit(result)
-        except Exception as e:
-            logger.error(f"Detection error: {e}")
+        except (FFmpegError, OSError, RuntimeError, ValueError) as exc:
+            logger.error("Detection error: %s", exc, exc_info=exc)
             if not self._cancelled:
-                self.error.emit(str(e))
+                self.error.emit(str(exc))
 
 
 class DetectionManager(QObject):
@@ -85,17 +86,18 @@ class DetectionManager(QObject):
             self._future = self._pipeline_wrapper.detect_samples_async(
                 output_dir=output_dir, callback=_cb
             )
-        except Exception as e:
-            self.error.emit(str(e))
+        except (FFmpegError, OSError, RuntimeError, ValueError) as exc:
+            logger.error("Detection start failed: %s", exc, exc_info=exc)
+            self.error.emit(str(exc))
 
     def cancel_detection(self) -> None:
         """Cancel detection processing."""
         # ProcessPoolExecutor futures can't be easily cancelled once started; best-effort.
-        try:
-            if self._future:
+        if self._future:
+            try:
                 self._future.cancel()
-        except Exception:
-            pass
+            except RuntimeError as exc:
+                logger.debug("Cancel detection future failed: %s", exc, exc_info=exc)
 
     def is_processing(self) -> bool:
         """Check if processing is in progress.
@@ -105,7 +107,4 @@ class DetectionManager(QObject):
         """
         if self._future is None:
             return False
-        try:
-            return not self._future.done()
-        except Exception:
-            return False
+        return not self._future.done()

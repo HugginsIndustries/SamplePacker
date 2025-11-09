@@ -63,8 +63,8 @@ class OverviewWorker(QThread):
 
             if not self._cancelled:
                 self.finished.emit(overview)
-        except Exception as e:
-            logger.error(f"Overview generation error: {e}")
+        except (RuntimeError, ValueError, OSError) as e:
+            logger.error("Overview generation error: %s", e, exc_info=e)
             if not self._cancelled:
                 self.error.emit(str(e))
 

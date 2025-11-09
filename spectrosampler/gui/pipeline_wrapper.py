@@ -1,10 +1,11 @@
 """Wrapper for pipeline processing in GUI context."""
 
 import logging
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from spectrosampler.audio_io import FFmpegError
 from spectrosampler.detectors.base import Segment
 from spectrosampler.pipeline_settings import ProcessingSettings
 
@@ -70,8 +71,8 @@ class PipelineWrapper:
             self.current_audio_info = get_audio_info(audio_path)
             logger.info(f"Loaded audio: {audio_path}")
             return self.current_audio_info
-        except Exception as e:
-            logger.error(f"Failed to load audio: {e}")
+        except (FFmpegError, OSError, ValueError) as exc:
+            logger.error("Failed to load audio %s: %s", audio_path, exc, exc_info=exc)
             raise
 
     def detect_samples(self, output_dir: Path | None = None) -> dict[str, Any]:
@@ -110,8 +111,10 @@ class PipelineWrapper:
             self.current_segments = result.get("segments", [])
             logger.info(f"Detection complete: {len(self.current_segments)} segments found")
             return result
-        except Exception as e:
-            logger.error(f"Failed to detect samples: {e}")
+        except (FFmpegError, OSError, RuntimeError, ValueError) as exc:
+            logger.error(
+                "Failed to detect samples for %s: %s", self.current_audio_path, exc, exc_info=exc
+            )
             raise
 
     def detect_samples_async(
@@ -147,27 +150,39 @@ class PipelineWrapper:
                 if not isinstance(max_workers, int) or max_workers <= 0:
                     max_workers = max(1, (os.cpu_count() or 4) - 1)
                 self._proc_executor = ProcessPoolExecutor(max_workers=max_workers)
-            except Exception:
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.warning(
+                    "Falling back to default process pool configuration: %s", exc, exc_info=exc
+                )
                 self._proc_executor = ProcessPoolExecutor()
 
         fut = self._proc_executor.submit(
             _detect_task, self.current_audio_path, output_dir, preview_settings
         )
+        if callback is not None:
 
-        def _done(f: Future) -> None:
-            try:
-                result = f.result()
+            def _done(f: Future) -> None:
+                exc = f.exception()
+                if exc is not None:
+                    if isinstance(exc, CancelledError):
+                        logger.info("Async detection task was cancelled.")
+                    else:
+                        logger.error("Async detection failed: %s", exc, exc_info=exc)
+                    return
+                try:
+                    result = f.result()
+                except CancelledError:
+                    logger.info("Async detection task was cancelled during result retrieval.")
+                    return
                 self.current_segments = result.get("segments", [])
                 logger.info(f"Detection complete: {len(self.current_segments)} segments found")
                 if callback:
                     try:
                         callback(result)
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.error(f"Async detection failed: {e}")
+                    except (RuntimeError, TypeError, ValueError) as cb_exc:
+                        logger.error("Detection callback failed: %s", cb_exc, exc_info=cb_exc)
 
-        fut.add_done_callback(_done)
+            fut.add_done_callback(_done)
         return fut
 
     def export_samples(self, output_dir: Path, selected_indices: list[int] | None = None) -> int:
@@ -216,8 +231,10 @@ class PipelineWrapper:
                     channels=self.settings.channels,
                 )
                 exported_count += 1
-            except Exception as e:
-                logger.error(f"Failed to export sample {idx}: {e}")
+            except (FFmpegError, OSError, ValueError) as exc:
+                logger.error(
+                    "Failed to export sample %d to %s: %s", idx, output_path, exc, exc_info=exc
+                )
 
         logger.info(f"Exported {exported_count} samples")
         return exported_count

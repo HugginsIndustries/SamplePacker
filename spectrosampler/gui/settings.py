@@ -172,7 +172,8 @@ class SettingsManager:
         val = self._settings.value("overlapDefaultBehavior", "discard_duplicates")
         try:
             s = str(val)
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.debug("Invalid overlap behavior setting %s: %s", val, exc, exc_info=exc)
             s = "discard_duplicates"
         if s not in ("discard_duplicates", "discard_overlaps", "keep_all"):
             s = "discard_duplicates"
@@ -272,6 +273,24 @@ class SettingsManager:
         """
         count = max(1, min(20, count))  # Clamp to 1-20
         self._settings.setValue("maxRecentAudioFiles", count)
+        self._settings.sync()
+
+    def get_theme_preference(self) -> str:
+        """Return stored theme preference ('system', 'dark', or 'light')."""
+        value = self._settings.value("themePreference", "system")
+        try:
+            pref = str(value)
+        except (TypeError, ValueError):
+            pref = "system"
+        if pref not in {"system", "dark", "light"}:
+            pref = "system"
+        return pref
+
+    def set_theme_preference(self, preference: str) -> None:
+        """Persist theme preference."""
+        if preference not in {"system", "dark", "light"}:
+            preference = "system"
+        self._settings.setValue("themePreference", preference)
         self._settings.sync()
 
     def get_window_geometry(self) -> dict[str, Any]:
