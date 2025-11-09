@@ -36,13 +36,16 @@ class WelcomeScreen(QWidget):
             parent: Parent widget.
         """
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Settings manager
         self._settings_manager = SettingsManager()
 
         # Theme manager
         self._theme_manager = ThemeManager(self)
-        self._theme_manager.apply_theme()
+        pref = self._settings_manager.get_theme_preference()
+        self._theme_manager.apply_theme(pref)
+        self._theme_manager.theme_changed.connect(lambda _: self._apply_theme())
 
         # Setup UI
         self._setup_ui()
@@ -72,6 +75,7 @@ class WelcomeScreen(QWidget):
         subtitle = QLabel(
             "Turn long field recordings into curated sample packs with a fast, modern desktop workflow."
         )
+        subtitle.setObjectName("subtitleLabel")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(subtitle)
 
@@ -138,15 +142,52 @@ class WelcomeScreen(QWidget):
 
         # Add welcome screen specific styles
         palette = self._theme_manager.palette
+        bg = palette["background"].name()
+        bg_secondary = palette["background_secondary"].name()
+        text = palette["text"].name()
+        text_secondary = palette["text_secondary"].name()
+        border = palette["border"].name()
+        accent = palette["accent"].name()
+        accent_hover = palette["accent_hover"].name()
+        selection = palette["selection"].name()
+
         welcome_styles = f"""
-            QListWidget::item {{
+            WelcomeScreen {{
+                background-color: {bg};
+            }}
+            WelcomeScreen QLabel {{
+                color: {text};
+            }}
+            WelcomeScreen QLabel#subtitleLabel {{
+                color: {text_secondary};
+            }}
+            WelcomeScreen QPushButton {{
+                background-color: {bg_secondary};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 12px;
+            }}
+            WelcomeScreen QPushButton:hover {{
+                background-color: {accent_hover};
+            }}
+            WelcomeScreen QPushButton:pressed {{
+                background-color: {accent};
+                color: {palette['text_bright'].name()};
+            }}
+            WelcomeScreen QListWidget {{
+                background-color: {bg_secondary};
+                border: 1px solid {border};
+                color: {text};
+            }}
+            WelcomeScreen QListWidget::item {{
                 padding: 8px;
             }}
-            QListWidget::item:selected {{
-                background-color: {palette['selection'].name()};
+            WelcomeScreen QListWidget::item:selected {{
+                background-color: {selection};
             }}
-            QListWidget::item:hover {{
-                background-color: {palette['accent_hover'].name()};
+            WelcomeScreen QListWidget::item:hover {{
+                background-color: {accent_hover};
             }}
         """
 

@@ -13,6 +13,7 @@ Start SpectroSampler with `spectrosampler-gui` (or `python -m spectrosampler.gui
 - **Create New Project** – Start from an empty session.
 - **Open Project...** – Browse for an existing `.ssproj`.
 - **Recent Projects / Audio Files** – Double-click to reopen; buttons clear the history.
+- At startup SpectroSampler checks that FFmpeg is available on your PATH. If it is missing, a blocking dialog explains how to install/enable FFmpeg on Windows and Linux before the GUI continues.
 
 Autosave is enabled by default. If SpectroSampler detects an autosave newer than your last manual save, it will offer to restore it when a project loads.
 
@@ -40,12 +41,24 @@ All splitters are draggable. Collapse the player or info table from the View men
 
 - **File** – Project lifecycle (new/open/save), audio import, recent files.
 - **Edit** – Undo/redo, re-run detection, auto sample ordering, bulk delete/disable, Duration Edits (expand/contract, stretch from start/end).
-- **View** – Zoom controls, toggle info table/player visibility, show disabled samples, refresh-rate limiter, grid settings.
+- **View** – Zoom controls, toggle info table/player visibility, show disabled samples, refresh-rate limiter, grid settings, and theme selection (System/Dark/Light).
 - **Export** – Pre/post padding, format (WAV/FLAC), sample rate, bit depth, channels.
 - **Settings** – Autosave toggle/interval, clear recent projects/audio.
 - **Help** – Verbose logging option and about dialog.
 
 Keyboard shortcuts mirror these actions; see [Appendix A](#appendix-a-keyboard-shortcuts).
+
+---
+
+### 2.3 Theme Modes
+
+Use **View → Theme** to switch between:
+
+- **System** – Follow the operating system theme (auto-detects on launch).
+- **Dark** – Force the dark palette.
+- **Light** – Force the light palette.
+
+Your choice is saved in user settings and stored with the current project, so reopening SpectroSampler (or sharing the project) restores the preferred look automatically.
 
 ---
 
@@ -203,7 +216,7 @@ Large projects benefit from leaving the info table collapsed while you fine-tune
 | Playback is silent | Check workstation audio output, confirm the sample’s Enable checkbox is on, and ensure the sample isn’t muted in your OS mixer. |
 | GUI stutters on long files | Lower the refresh rate, collapse panels, or reduce zoom. Close other heavy applications. |
 
-Verbose logging (Help → Verbose Log) writes additional diagnostics to the console—useful when filing bug reports.
+Run `spectrosampler-gui --verbose` to capture additional diagnostics in the console when filing bug reports.
 
 ---
 

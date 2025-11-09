@@ -1,11 +1,15 @@
 """Navigator scrollbar widget (Bitwig-style) showing spectrogram overview."""
 
+import logging
+
 import numpy as np
 from PySide6.QtCore import QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from spectrosampler.gui.spectrogram_tiler import SpectrogramTile
+
+logger = logging.getLogger(__name__)
 
 
 class NavigatorScrollbar(QWidget):
@@ -129,6 +133,27 @@ class NavigatorScrollbar(QWidget):
             colors: Dictionary with color definitions.
         """
         self._theme_colors.update(colors)
+
+        if "background" in colors:
+            self._theme_colors["background"] = colors["background"]
+        if "background_secondary" in colors:
+            self._theme_colors["overview"] = colors["background_secondary"]
+        if "selection" in colors:
+            indicator = QColor(colors["selection"])
+            indicator.setAlphaF(0.25)
+            self._theme_colors["view_indicator"] = indicator
+        if "selection_border" in colors:
+            border = QColor(colors["selection_border"])
+            border.setAlphaF(0.5)
+            self._theme_colors["view_border"] = border
+            handle = QColor(colors["selection_border"])
+            handle.setAlphaF(0.65)
+            self._theme_colors["handle"] = handle
+        if "accent" in colors:
+            marker = QColor(colors["accent"])
+            marker.setAlphaF(0.5)
+            self._theme_colors["marker"] = marker
+
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -342,7 +367,8 @@ class NavigatorScrollbar(QWidget):
             ad = event.angleDelta()
             dy = int(ad.y()) if hasattr(ad, "y") else int(ad.y())
             dx = int(ad.x()) if hasattr(ad, "x") else int(ad.x())
-        except Exception:
+        except (AttributeError, TypeError) as exc:
+            logger.debug("Navigator wheel angleDelta unavailable: %s", exc, exc_info=exc)
             dy = dy or 0
             dx = dx or 0
         if dy == 0 and dx == 0:
@@ -350,8 +376,8 @@ class NavigatorScrollbar(QWidget):
                 pd = event.pixelDelta()
                 dy = int(pd.y()) if hasattr(pd, "y") else int(pd.y())
                 dx = int(pd.x()) if hasattr(pd, "x") else int(pd.x())
-            except Exception:
-                pass
+            except (AttributeError, TypeError) as exc:
+                logger.debug("Navigator wheel pixelDelta unavailable: %s", exc, exc_info=exc)
         if dy == 0 and dx == 0:
             return
         # ALT-held: horizontal pan

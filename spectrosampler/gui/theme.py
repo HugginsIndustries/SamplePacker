@@ -1,10 +1,14 @@
 """Theme system with dark theme and system integration."""
 
+import logging
 import platform
+import subprocess
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QObject, QSettings, Qt, Signal
+from PySide6.QtGui import QColor
+
+logger = logging.getLogger(__name__)
 
 
 class ThemeManager(QObject):
@@ -21,6 +25,7 @@ class ThemeManager(QObject):
         super().__init__(parent)
         self._current_theme = "dark"
         self._palette = self._create_dark_palette()
+        self._current_preference = self._load_preference()
 
     @property
     def current_theme(self) -> str:
@@ -31,6 +36,11 @@ class ThemeManager(QObject):
     def palette(self) -> dict[str, Any]:
         """Get current color palette."""
         return self._palette
+
+    @property
+    def preference(self) -> str:
+        """Return current preference ('system', 'dark', or 'light')."""
+        return self._current_preference
 
     def _create_dark_palette(self) -> dict[str, Any]:
         """Create dark theme color palette.
@@ -67,6 +77,37 @@ class ThemeManager(QObject):
             "marker_spectral": QColor(0x66, 0xAA, 0xFF),
         }
 
+    def _create_light_palette(self) -> dict[str, Any]:
+        """Create light theme color palette."""
+        return {
+            # Background colors
+            "background": QColor(0xF4, 0xF5, 0xF7),
+            "background_secondary": QColor(0xFF, 0xFF, 0xFF),
+            "background_tertiary": QColor(0xEB, 0xEC, 0xEF),
+            # Accent colors
+            "accent": QColor(0x00, 0x55, 0xA4),
+            "accent_secondary": QColor(0x00, 0x8A, 0x5C),
+            "accent_hover": QColor(0x22, 0x74, 0xC5),
+            # Text colors
+            "text": QColor(0x25, 0x25, 0x25),
+            "text_secondary": QColor(0x55, 0x55, 0x55),
+            "text_bright": QColor(0x00, 0x00, 0x00),
+            # Border colors
+            "border": QColor(0xC9, 0xCC, 0xD1),
+            "border_light": QColor(0xD9, 0xDC, 0xE0),
+            # Selection colors
+            "selection": QColor(0x00, 0x55, 0xA4, 0x40),
+            "selection_border": QColor(0x00, 0x55, 0xA4),
+            # Grid colors
+            "grid": QColor(0xB0, 0xB5, 0xBC, 0x80),
+            "grid_major": QColor(0x90, 0x96, 0x9E, 0xA0),
+            # Marker colors
+            "marker_voice": QColor(0x00, 0x8A, 0x5C),
+            "marker_transient": QColor(0xD9, 0x87, 0x00),
+            "marker_nonsilence": QColor(0xC0, 0x33, 0x69),
+            "marker_spectral": QColor(0x36, 0x70, 0xC0),
+        }
+
     def detect_system_theme(self) -> str:
         """Detect system theme preference.
 
@@ -76,21 +117,9 @@ class ThemeManager(QObject):
         system = platform.system()
 
         if system == "Windows":
-            try:
-                from PySide6.QtGui import QGuiApplication
-
-                app = QGuiApplication.instance()
-                if app:
-                    hints = app.styleHints()
-                    # Qt 6.5+ has colorScheme
-                    if hasattr(hints, "colorScheme"):
-                        scheme = hints.colorScheme()
-                        if scheme == QPalette.ColorScheme.Dark:
-                            return "dark"
-                        elif scheme == QPalette.ColorScheme.Light:
-                            return "light"
-            except Exception:
-                pass
+            detected = self._detect_windows_theme()
+            if detected:
+                return detected
 
         elif system == "Darwin":  # macOS
             try:
@@ -106,14 +135,12 @@ class ThemeManager(QObject):
                 name = appearance.name()
                 if "Dark" in str(name):
                     return "dark"
-            except Exception:
-                pass
+            except (ImportError, AttributeError, OSError) as exc:
+                logger.debug("Failed to detect macOS theme preference: %s", exc, exc_info=exc)
 
         elif system == "Linux":
             # Check GTK settings
             try:
-                import subprocess
-
                 result = subprocess.run(
                     ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
                     capture_output=True,
@@ -122,29 +149,83 @@ class ThemeManager(QObject):
                 )
                 if result.returncode == 0 and "dark" in result.stdout.lower():
                     return "dark"
-            except Exception:
-                pass
+            except (
+                ImportError,
+                FileNotFoundError,
+                subprocess.SubprocessError,
+                subprocess.TimeoutExpired,
+            ) as exc:
+                logger.debug("Failed to detect Linux theme preference: %s", exc, exc_info=exc)
 
         # Default to dark theme
         return "dark"
+
+    def _load_preference(self) -> str:
+        """Load stored theme preference from QSettings."""
+        try:
+            settings = QSettings("SpectroSampler", "SpectroSampler")
+            stored = str(settings.value("themePreference", "system"))
+        except (TypeError, ValueError):
+            stored = "system"
+        if stored not in {"system", "dark", "light"}:
+            stored = "system"
+        return stored
+
+    def _detect_windows_theme(self) -> str | None:
+        """Attempt to detect Windows theme using Qt hints or registry fallback."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+        except ImportError as exc:
+            logger.debug("QGuiApplication unavailable: %s", exc, exc_info=exc)
+        else:
+            app = QGuiApplication.instance()
+            if app:
+                try:
+                    hints = app.styleHints()
+                    if hasattr(hints, "colorScheme") and hasattr(Qt, "ColorScheme"):
+                        scheme = hints.colorScheme()
+                        if scheme == Qt.ColorScheme.Dark:
+                            return "dark"
+                        if scheme == Qt.ColorScheme.Light:
+                            return "light"
+                except (RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("Failed to read Qt color scheme hints: %s", exc, exc_info=exc)
+
+        # Registry fallback for Windows versions without Qt colorScheme support
+        try:
+            import winreg
+
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                if isinstance(value, int):
+                    return "light" if value else "dark"
+        except OSError as exc:
+            logger.debug("Failed to read Windows theme from registry: %s", exc, exc_info=exc)
+
+        return None
 
     def apply_theme(self, theme: str | None = None) -> str:
         """Apply theme to application.
 
         Args:
-            theme: Theme name ('dark' or 'light'). If None, detects from system.
+            theme: Theme preference ('system', 'dark', or 'light'). If None, uses stored preference.
 
         Returns:
             Applied theme name.
         """
-        if theme is None:
-            theme = self.detect_system_theme()
+        preference = theme or self._current_preference
+        if preference not in {"system", "dark", "light"}:
+            preference = "system"
 
-        if theme == "dark":
-            self._current_theme = "dark"
-            self._palette = self._create_dark_palette()
+        self._current_preference = preference
+
+        resolved = self.detect_system_theme() if preference == "system" else preference
+
+        if resolved == "light":
+            self._current_theme = "light"
+            self._palette = self._create_light_palette()
         else:
-            # Light theme not implemented yet, default to dark
             self._current_theme = "dark"
             self._palette = self._create_dark_palette()
 

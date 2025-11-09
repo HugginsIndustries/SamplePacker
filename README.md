@@ -23,6 +23,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 
 - **Python 3.11 or newer**
 - **FFmpeg** reachable on your PATH (used for decoding/encoding)
+- SpectroSampler verifies FFmpeg at startup and shows a blocking dialog with installation guidance (Windows + Linux) if it is missing, so install/verify FFmpeg before launching.
 - Optional: **Visual C++ Build Tools** if you plan to install the VAD detector (`webrtcvad`) on Windows
 
 
@@ -74,6 +75,7 @@ First launch presents the welcome screen where you can start a new project, open
 spectrosampler-gui                    Launch the GUI
 spectrosampler-gui --project <path>   Open a specific project file
 spectrosampler-gui --audio <path>     Open a specific audio file
+spectrosampler-gui --verbose          Enable verbose (DEBUG) console logging
 spectrosampler-gui --help             Show help and exit
 spectrosampler-gui --version          Show version and exit
 ```
@@ -106,6 +108,7 @@ spectrosampler-gui --version          Show version and exit
 - Use **Duration Edits** (Edit menu) to expand/contract or stretch from start/end.
 - Re-order or re-rank samples automatically (Edit → Auto Sample Order / Re-order Samples).
 - Toggle display of disabled samples (View menu).
+- Switch between System, Dark, and Light themes (View → Theme); the choice persists between sessions via your local preferences.
 - Lock snap to grid or adjust BPM/subdivision (View → Grid Settings).
 - Limit UI refresh rate if working on large projects (View → Limit UI Refresh Rate → Refresh Rate).
 
@@ -159,6 +162,7 @@ Project saves capture:
 - Export configuration (format, rate, padding, channels, bit depth)
 - Grid settings and UI layout (splitter sizes, panels hidden/shown)
 - Recent playback state (current view, zoom)
+- Preferred theme mode is stored per user (System/Dark/Light)
 
 Files are JSON; you can inspect or version-control them. Autosaves keep the last three revisions in the temp directory.
 

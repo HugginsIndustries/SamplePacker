@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 class LoadingSpinner(QWidget):
     """Animated loading spinner widget."""
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        theme_manager: ThemeManager | None = None,
+    ):
         """Initialize loading spinner.
 
         Args:
@@ -28,7 +32,7 @@ class LoadingSpinner(QWidget):
         self._timer.start(16)  # ~60 FPS
         self.setFixedSize(48, 48)
         # Cache theme manager
-        self._theme_manager = ThemeManager(self)
+        self._theme_manager = theme_manager or ThemeManager(self)
         # Ensure widget is visible and can receive paint events
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
@@ -126,7 +130,12 @@ class LoadingContainer(QWidget):
 class LoadingScreen(QWidget):
     """Loading screen overlay widget."""
 
-    def __init__(self, parent: QWidget | None = None, message: str = "Loading..."):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        message: str = "Loading...",
+        theme_manager: ThemeManager | None = None,
+    ):
         """Initialize loading screen.
 
         Args:
@@ -137,7 +146,7 @@ class LoadingScreen(QWidget):
         self._message = message
 
         # Theme manager
-        self._theme_manager = ThemeManager(self)
+        self._theme_manager = theme_manager or ThemeManager(self)
         self._theme_manager.apply_theme()
 
         # Setup UI
@@ -166,7 +175,7 @@ class LoadingScreen(QWidget):
         container_layout.setSpacing(20)
 
         # Spinner
-        self._spinner = LoadingSpinner(self._container)
+        self._spinner = LoadingSpinner(self._container, theme_manager=self._theme_manager)
         container_layout.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Message
@@ -202,6 +211,14 @@ class LoadingScreen(QWidget):
             }}
         """
         )
+        self._message_label.setStyleSheet(f"color: {palette['text'].name()};")
+        self._container.update()
+        self._spinner.update()
+
+    def refresh_theme(self, preference: str | None = None) -> None:
+        """Refresh theme colors from a shared preference."""
+        self._theme_manager.apply_theme(preference)
+        self._apply_theme()
 
     def set_message(self, message: str) -> None:
         """Set loading message.

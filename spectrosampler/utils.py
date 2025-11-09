@@ -43,6 +43,9 @@ def setup_logging(verbose: bool = False) -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    matplotlib_level = logging.INFO if verbose else logging.WARNING
+    logging.getLogger("matplotlib").setLevel(matplotlib_level)
+    logging.getLogger("matplotlib.font_manager").setLevel(matplotlib_level)
 
 
 def compute_file_hash(file_path: Path, chunk_size: int = 8192) -> str:
