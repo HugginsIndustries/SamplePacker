@@ -40,6 +40,18 @@ class DetectionSettingsPanel(QWidget):
         # Create settings
         self._settings = ProcessingSettings()
         self._settings_manager = SettingsManager()
+        # Restore last-used max sample limit from persistent settings so the UI starts in sync.
+        try:
+            persisted_max_samples = self._settings_manager.get_detection_max_samples()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Falling back to default max samples; persisted value unavailable: %s",
+                exc,
+                exc_info=exc,
+            )
+        else:
+            if persisted_max_samples:
+                self._settings.max_samples = persisted_max_samples
 
         # Create layout
         layout = QVBoxLayout()
@@ -263,8 +275,9 @@ class DetectionSettingsPanel(QWidget):
         layout.addRow("Min gap:", self._min_gap_slider["widget"])
 
         # Max samples
+        # Allow up to 10,000 samples to match zero-padded export naming.
         self._max_samples_slider = self._create_slider_spin(
-            1, 1024, int(self._settings.max_samples), ""
+            1, 10000, int(self._settings.max_samples), ""
         )
         self._max_samples_slider["slider"].valueChanged.connect(self._on_max_samples_changed)
         layout.addRow("Max samples:", self._max_samples_slider["widget"])
@@ -418,8 +431,7 @@ class DetectionSettingsPanel(QWidget):
 
     def _on_max_samples_changed(self, value: int) -> None:
         """Handle max samples change."""
-        self._settings.max_samples = int(value)
-        self._on_settings_changed()
+        self.set_max_samples_value(value, persist=True, notify=True)
 
     def _on_sample_spread_changed(self, state: int) -> None:
         """Handle sample spread toggle change."""
@@ -463,3 +475,49 @@ class DetectionSettingsPanel(QWidget):
             ProcessingSettings object.
         """
         return self._settings
+
+    def set_max_samples_value(
+        self,
+        value: int,
+        *,
+        persist: bool = False,
+        notify: bool = False,
+    ) -> None:
+        """Update the max samples controls, underlying settings, and optional persistence."""
+        if not hasattr(self, "_max_samples_slider"):
+            # Controls are not constructed yet; store the clamped value directly.
+            clamped = max(1, min(10000, int(value)))
+            self._settings.max_samples = clamped
+            if persist:
+                try:
+                    self._settings_manager.set_detection_max_samples(clamped)
+                except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                    logger.warning(
+                        "Could not persist max samples before widget init: %s",
+                        exc,
+                        exc_info=exc,
+                    )
+            if notify:
+                self._on_settings_changed()
+            return
+
+        slider = self._max_samples_slider["slider"]
+        spinbox = self._max_samples_slider["spinbox"]
+        clamped = max(slider.minimum(), min(slider.maximum(), int(value)))
+
+        # Block UI signal loops while we synchronise the slider/spin pair.
+        slider_prev = slider.blockSignals(True)
+        spin_prev = spinbox.blockSignals(True)
+        slider.setValue(clamped)
+        spinbox.setValue(clamped)
+        slider.blockSignals(slider_prev)
+        spinbox.blockSignals(spin_prev)
+
+        self._settings.max_samples = clamped
+        if persist:
+            try:
+                self._settings_manager.set_detection_max_samples(clamped)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                logger.warning("Failed to persist max samples value: %s", exc, exc_info=exc)
+        if notify:
+            self._on_settings_changed()

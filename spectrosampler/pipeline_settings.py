@@ -34,7 +34,18 @@ class ProcessingSettings:
         self.no_merge_after_padding: bool = kwargs.get("no_merge_after_padding", True)
 
         # Caps/filters
-        self.max_samples: int = kwargs.get("max_samples", 256)
+        raw_max_samples = kwargs.get("max_samples", 256)
+        try:
+            max_samples_value = int(raw_max_samples)
+        except (TypeError, ValueError):
+            max_samples_value = 256
+        if max_samples_value < 0:
+            # Zero disables the cap; negative values collapse to zero to stay consistent.
+            max_samples_value = 0
+        elif max_samples_value > 10000:
+            # Clamp to UI-supported ceiling (matches zero-padded export naming).
+            max_samples_value = 10000
+        self.max_samples: int = max_samples_value
         self.min_snr: float = kwargs.get("min_snr", 0.0)
         self.sample_spread: bool = kwargs.get("sample_spread", True)
         self.sample_spread_mode: str = kwargs.get("sample_spread_mode", "strict")

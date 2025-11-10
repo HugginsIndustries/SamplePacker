@@ -1129,6 +1129,10 @@ class MainWindow(QMainWindow):
                 # The settings panel doesn't have a set_settings method, so we'll need to
                 # update the underlying _settings object
                 self._settings_panel._settings = settings
+                # Ensure the max-sample slider mirrors the restored setting (and persists it).
+                self._settings_panel.set_max_samples_value(
+                    getattr(settings, "max_samples", 256), persist=True, notify=False
+                )
                 # Update UI controls to match settings
                 self._settings_panel._mode_combo.setCurrentText(settings.mode)
                 self._settings_panel._threshold_spin.setValue(
