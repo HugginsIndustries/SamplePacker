@@ -151,14 +151,93 @@ def test_sanitize_filename():
 
 
 def test_cli_integration(test_audio_file: Path, test_output_dir: Path):
-    """Integration test placeholder to ensure test audio generation and output structure exists."""
-    assert test_audio_file.exists()
-    assert test_audio_file.stat().st_size > 0
+    """Run the processing pipeline end-to-end and validate exported artifacts."""
+    from spectrosampler.audio_io import check_ffmpeg
+    from spectrosampler.pipeline import Pipeline
+    from spectrosampler.pipeline_settings import ProcessingSettings
 
-    # Placeholder: verify structure can be created
-    samples_dir = test_output_dir / "samples"
-    samples_dir.mkdir(parents=True, exist_ok=True)
+    if not check_ffmpeg():
+        pytest.skip("FFmpeg is required for pipeline integration test.")
+
+    settings = ProcessingSettings(
+        mode="transient",
+        threshold=82.0,
+        detection_pre_pad_ms=25.0,
+        detection_post_pad_ms=75.0,
+        export_pre_pad_ms=10.0,
+        export_post_pad_ms=40.0,
+        merge_gap_ms=60.0,
+        min_dur_ms=40.0,
+        max_dur_ms=1500.0,
+        min_gap_ms=120.0,
+        max_samples=8,
+        sample_spread=False,
+        denoise="off",
+        spectrogram=False,
+        report=None,
+        cache=False,
+        create_subfolders=True,
+    )
+
+    pipeline = Pipeline(settings)
+    pipeline.process(test_audio_file, test_output_dir)
+
+    base_name = test_audio_file.stem
+    output_root = test_output_dir / f"{base_name}_{settings.mode}"
+    samples_dir = output_root / "samples"
+    markers_dir = output_root / "markers"
+    data_dir = output_root / "data"
+
+    assert output_root.exists()
     assert samples_dir.exists()
+    assert markers_dir.exists()
+    assert data_dir.exists()
+
+    sample_files = sorted(samples_dir.glob("*.wav"))
+    assert sample_files, "Expected at least one exported sample."
+    for sample_file in sample_files:
+        assert sample_file.stat().st_size > 0
+        assert sample_file.name.startswith(base_name)
+        assert "_sample_" in sample_file.name
+        assert "detector-" in sample_file.name
+
+    summary_path = data_dir / "summary.json"
+    timestamps_csv = data_dir / "timestamps.csv"
+    audacity_labels = markers_dir / "audacity_labels.txt"
+    reaper_csv = markers_dir / "reaper_regions.csv"
+
+    assert summary_path.exists()
+    assert timestamps_csv.exists()
+    assert audacity_labels.exists()
+    assert reaper_csv.exists()
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    segment_total = summary["segments_summary"]["total"]
+    assert segment_total > 0
+    assert segment_total == len(summary["segments"])
+    assert segment_total == len(sample_files)
+    assert summary["settings"]["mode"] == "transient"
+    assert summary["segments_summary"]["by_detector"].get("transient_flux", 0) == segment_total
+
+    with open(timestamps_csv, encoding="utf-8") as csv_file:
+        csv_rows = list(csv.DictReader(csv_file))
+    assert len(csv_rows) == segment_total
+    assert {row["detector"] for row in csv_rows} == {"transient_flux"}
+
+    with open(audacity_labels, encoding="utf-8") as label_file:
+        label_lines = [line.strip() for line in label_file if line.strip()]
+    assert len(label_lines) == segment_total
+    assert label_lines[0].split()[-1] == "transient_flux"
+
+    with open(reaper_csv, encoding="utf-8") as reaper_file:
+        reaper_rows = list(csv.reader(reaper_file))
+    assert len(reaper_rows) == segment_total + 1  # header + data rows
+    assert reaper_rows[0] == ["Name", "Start", "End", "Length"]
+
+    # Cross-check exported filenames and manifest entries align on identifiers.
+    manifest_names = [f"{base_name}_sample_{str(idx).zfill(4)}" for idx in range(segment_total)]
+    for manifest_name in manifest_names:
+        assert any(manifest_name in sample.name for sample in sample_files)
 
 
 def test_timestamps_csv_format(test_output_dir: Path):

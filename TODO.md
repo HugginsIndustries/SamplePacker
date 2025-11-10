@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 33 items, P2: 21 items_
+_Summary: P0: 0 items, P1: 32 items, P2: 21 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -245,10 +245,6 @@ _Summary: P0: 0 items, P1: 33 items, P2: 21 items_
 - [ ] [P1] Add GUI integration tests for core workflows
   - File load → detect → edit → export happy path.
   - Acceptance: Stable tests passing in CI.
-- [ ] [P1] Add pipeline integration regression test (from `tests/test_cli_integration.py:test_cli_integration`)
-  - Acceptance:
-    - Test harness runs the pipeline entry point against synthetic audio, producing actual samples/markers in a temporary directory.
-    - Assertions validate exported filenames, manifest counts, and metadata contents.
 - [ ] [P2] Add performance benchmarks
   - Track detection, processing, and UI operations over time.
   - Acceptance: Baselines defined; regressions flagged.
