@@ -1,9 +1,9 @@
 """Delegates for painting lightweight buttons and handling clicks.
 
 Handles rows:
-- Row 1: Center/Fill (two small buttons)
-- Row 6: Play
-- Row 7: Delete
+- Row 2: Center/Fill (two small buttons)
+- Row 7: Play
+- Row 8: Delete
 
 Row 0 (checkbox) is handled by the model via CheckStateRole.
 Numeric editors use default delegate editors.
@@ -24,7 +24,7 @@ class SampleTableDelegate(QStyledItemDelegate):
 
     def paint(self, painter: QPainter, option, index: QModelIndex) -> None:  # type: ignore[override]
         row = index.row()
-        if row not in (0, 1, 6, 7):
+        if row not in (0, 2, 7, 8):
             return super().paint(painter, option, index)
 
         painter.save()
@@ -33,11 +33,11 @@ class SampleTableDelegate(QStyledItemDelegate):
             if row == 0:
                 # Custom checkbox with white outline/check, centered
                 self._paint_checkbox(painter, rect, index.data(Qt.CheckStateRole) == Qt.Checked)
-            elif row == 1:
+            elif row == 2:
                 self._paint_dual_button(painter, rect, "Center", "Fill")
-            elif row == 6:
-                self._paint_single_button(painter, rect, "▶")
             elif row == 7:
+                self._paint_single_button(painter, rect, "▶")
+            elif row == 8:
                 self._paint_single_button(painter, rect, "×")
         finally:
             painter.restore()
@@ -57,7 +57,7 @@ class SampleTableDelegate(QStyledItemDelegate):
                     current = index.data(Qt.CheckStateRole) == Qt.Checked
                     model.setData(index, Qt.Unchecked if current else Qt.Checked, Qt.CheckStateRole)
                     return True
-            elif row == 1:
+            elif row == 2:
                 left, right = self._dual_button_rects(rect)
                 pos = event.position().toPoint()  # type: ignore[attr-defined]
                 if left.contains(pos):
@@ -66,11 +66,11 @@ class SampleTableDelegate(QStyledItemDelegate):
                 if right.contains(pos):
                     self.fillClicked.emit(col)
                     return True
-            elif row == 6:
+            elif row == 7:
                 if rect.contains(event.position().toPoint()):  # type: ignore[attr-defined]
                     self.playClicked.emit(col)
                     return True
-            elif row == 7:
+            elif row == 8:
                 if rect.contains(event.position().toPoint()):  # type: ignore[attr-defined]
                     self.deleteClicked.emit(col)
                     return True

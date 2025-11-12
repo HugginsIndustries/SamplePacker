@@ -88,6 +88,17 @@ def test_build_sample_filename():
     assert "278.7s-313.6s" in filename or "278.7" in filename
     assert "transient" in filename.lower() or "flux" in filename.lower()
 
+    named_seg = Segment(
+        start=3.2,
+        end=4.8,
+        detector="voice_vad",
+        score=0.92,
+        attrs={"name": "Bird Song"},
+    )
+    named_filename = build_sample_filename("field", named_seg, index=12, total=40)
+    slug = sanitize_filename("Bird Song").replace(" ", "_").replace(".", "_")
+    assert f"sample_0012_{slug}_" in named_filename
+
 
 def test_filename_detector_collapse():
     from spectrosampler.detectors.base import Segment

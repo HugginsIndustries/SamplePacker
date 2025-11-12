@@ -29,9 +29,9 @@ Autosave is enabled by default. If SpectroSampler detects an autosave newer than
 | --- | --- |
 | **Detection Settings (left panel)** | Detector choice, thresholds, timing limits, CPU worker count, denoise/filters, overlap defaults, detection trigger button. |
 | **Sample Player (top center)** | Metadata readout, play/pause/stop, next/previous navigation, loop toggle, scrub slider, and a playback line mirrored on the spectrogram. |
-| **Spectrogram Canvas (center)** | Zoom/pan view, draw or adjust sample regions, right-click for context actions, drag handles to resize. |
+| **Spectrogram Canvas (center)** | Zoom/pan view, draw or adjust sample regions, right-click for context actions (play, disable, edit name, center/fill, delete), drag handles to resize. |
 | **Navigator Overview (below spectrogram)** | Miniature spectrogram with a draggable viewport rectangle for quick jumps. |
-| **Sample Table (bottom)** | Per-sample enable checkbox, start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
+| **Sample Table (bottom)** | Per-sample enable checkbox, optional Name text field (feeds export filenames), start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
 
 All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram.
 
@@ -129,9 +129,12 @@ When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-
 Selecting a sample from the table highlights it in the spectrogram and vice versa. Table columns provide:
 
 - **Enable** – Include/exclude from export.
+- **Name (optional)** – Text box that feeds into the export filename; leave blank to keep the original pattern.
 - **Start / End / Duration** – Editable numeric cells (double-click to edit, press Enter to commit).
 - **Detector** – Source detector label.
 - **Actions** – Center, Fill (zoom the sample to the viewport width), Play, Delete.
+
+Right-click a segment in the spectrogram to open the context menu; **Edit Name** lets you rename the sample, and the chosen label appears below the segment number on the spectrogram as well as in export filenames.
 
 Use the context menu or toolbar buttons on the spectrogram to disable the current sample or disable everything except the current one.
 
@@ -181,7 +184,7 @@ Open the **Export** menu to configure session-wide parameters:
 - **Bit Depth** – 16-bit, 24-bit, 32-bit float, or “None (original).”
 - **Channels** – Mono, stereo, or “None (original)” to keep source layout.
 
-When ready, choose **File → Export Samples** (`Ctrl+E`). Only enabled (checked) columns are included. Exported filenames include the detector name, index, and source file id, and they are sanitized automatically so reserved characters or Windows device names never derail the export on any platform.
+When ready, choose **File → Export Samples** (`Ctrl+E`). Only enabled (checked) columns are included. Exported filenames include the detector name, index, optional per-sample Name slug, and source file id, and they are sanitized automatically so reserved characters or Windows device names never derail the export on any platform.
 
 > Screenshot placeholder: `docs/images/export-menu.png`
 

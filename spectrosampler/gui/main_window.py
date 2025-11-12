@@ -15,6 +15,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -238,6 +239,7 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.sample_disable_others_requested.connect(
             self._on_disable_other_samples
         )
+        self._spectrogram_widget.sample_name_edit_requested.connect(self._on_edit_sample_name)
         self._spectrogram_widget.sample_center_requested.connect(self._on_center_clicked)
         self._spectrogram_widget.sample_center_fill_requested.connect(self._on_fill_clicked)
         # Keep navigator highlight synced to editor zoom/pan
@@ -306,7 +308,7 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             scrollbar_h = 18
         table_height = (
-            self._sample_table_view.horizontalHeader().height() + (8 * 30) + scrollbar_h + 12
+            self._sample_table_view.horizontalHeader().height() + (9 * 30) + scrollbar_h + 12
         )
         self._sample_table_view.setMinimumHeight(table_height)
         # Wire delegate signals
@@ -344,11 +346,11 @@ class MainWindow(QMainWindow):
         splitter.setSizes([300, 800])
         self._player_spectro_splitter.setSizes([120, 480])  # Player: 120px, Spectrogram: 480px
         editor_splitter.setSizes([600, 100])
-        self._main_splitter.setSizes([600, 200])
+        self._main_splitter.setSizes([600, table_height])
 
         # Store initial sizes for restore
         self._player_initial_size = 120
-        self._info_table_initial_size = 200
+        self._info_table_initial_size = table_height
 
         # Connect splitter signals to update menu action states when manually collapsed/expanded
         self._main_splitter.splitterMoved.connect(self._on_info_splitter_moved)
@@ -2774,6 +2776,51 @@ class MainWindow(QMainWindow):
         # Mark as modified (sample disabled/enabled)
         self._project_modified = True
         self._update_window_title()
+
+    def _on_edit_sample_name(self, index: int) -> None:
+        """Open input dialog to edit the selected sample name."""
+        if not self._pipeline_wrapper:
+            return
+        if not (0 <= index < len(self._pipeline_wrapper.current_segments)):
+            return
+
+        seg = self._pipeline_wrapper.current_segments[index]
+        if not hasattr(seg, "attrs") or seg.attrs is None:
+            seg.attrs = {}
+        current_name = str(seg.attrs.get("name", "")).strip()
+
+        value, accepted = QInputDialog.getText(
+            self,
+            "Edit Sample Name",
+            "Name (optional):",
+            text=current_name,
+        )
+        if not accepted:
+            return
+
+        new_name = value.strip()
+        if new_name == current_name:
+            return
+
+        if new_name:
+            seg.attrs["name"] = new_name
+        else:
+            seg.attrs.pop("name", None)
+
+        try:
+            self._sample_table_model.setData(
+                self._sample_table_model.index(1, index),
+                new_name,
+                Qt.EditRole,
+            )
+        except (RuntimeError, ValueError) as exc:
+            logger.debug("Failed to update sample name: %s", exc, exc_info=exc)
+
+        self._spectrogram_widget.set_segments(self._get_display_segments())
+        self._sample_table_view.selectColumn(index)
+        self._project_modified = True
+        self._update_window_title()
+        self._status_label.setText("Updated sample name")
 
     def _on_disable_sample(self, index: int, disabled: bool) -> None:
         """Disable/enable single sample from context menu."""

@@ -35,6 +35,7 @@ class SpectrogramWidget(QWidget):
     # New actions
     sample_disable_requested = Signal(int, bool)  # (index, disabled)
     sample_disable_others_requested = Signal(int)  # (index)
+    sample_name_edit_requested = Signal(int)  # (index)
     sample_center_requested = Signal(int)  # (index)
     sample_center_fill_requested = Signal(int)  # (index)
     # Emitted whenever the visible time range changes (start_time, end_time)
@@ -649,8 +650,8 @@ class SpectrogramWidget(QWidget):
                 zorder=2,
             )
             self._segment_artists.append(span)
+            ylim = self._ax.get_ylim()
             if not is_enabled and self._show_disabled:
-                ylim = self._ax.get_ylim()
                 x0, x1 = seg_start, seg_end
                 y0, y1 = ylim[0], ylim[1]
                 (ln1,) = self._ax.plot([x0, x1], [y0, y1], color="#FF6666", linewidth=1.5, zorder=3)
@@ -666,7 +667,7 @@ class SpectrogramWidget(QWidget):
                 label_color_name = str(label_color)
             txt = self._ax.text(
                 label_x,
-                self._ax.get_ylim()[1] * 0.95,
+                ylim[1] * 0.95,
                 str(i),
                 color=label_color_name,
                 ha="center",
@@ -674,6 +675,27 @@ class SpectrogramWidget(QWidget):
                 fontsize=8,
             )
             self._segment_artists.append(txt)
+            display_name = ""
+            try:
+                display_name = str(seg.attrs.get("name", "")).strip()
+            except (AttributeError, TypeError) as exc:
+                logger.debug("Segment attrs missing 'name': %s", exc, exc_info=exc)
+                display_name = ""
+            if display_name:
+                safe_name = display_name.replace("\n", " ").replace("\r", " ")
+                max_len = 28
+                if len(safe_name) > max_len:
+                    safe_name = safe_name[: max_len - 3].rstrip() + "..."
+                name_txt = self._ax.text(
+                    label_x,
+                    ylim[1] * 0.90,
+                    safe_name,
+                    color=label_color_name,
+                    ha="center",
+                    va="top",
+                    fontsize=8,
+                )
+                self._segment_artists.append(name_txt)
 
         playback_time = self._playback_time
         playback_index = self._playback_segment_index
@@ -1440,6 +1462,8 @@ class SpectrogramWidget(QWidget):
         disable_others_action.triggered.connect(
             lambda: self.sample_disable_others_requested.emit(seg_index)
         )
+        edit_name_action = menu.addAction("Edit Name")
+        edit_name_action.triggered.connect(lambda: self.sample_name_edit_requested.emit(seg_index))
 
         menu.addSeparator()
 

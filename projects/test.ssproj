@@ -2,7 +2,7 @@
   "version": "1.0",
   "spectrosampler_version": "0.1.0",
   "created": "2025-11-06T01:32:00.700707Z",
-  "modified": "2025-11-12T03:33:17.105384Z",
+  "modified": "2025-11-12T04:56:02.479941Z",
   "audio_path": "C:\\dev\\SamplePacker\\recordings\\field.WAV",
   "segments": [
     {
@@ -805,7 +805,8 @@
       "attrs": {
         "raw_start": 5266.11,
         "raw_end": 5267.429999999999,
-        "enabled": true
+        "enabled": true,
+        "name": "car pass"
       }
     },
     {
@@ -900,8 +901,8 @@
     "time_signature_denominator": 4
   },
   "ui_state": {
-    "view_start": 5265.025907841445,
-    "view_end": 5268.49590705677,
+    "view_start": 5252.655329869414,
+    "view_end": 5278.437714502096,
     "zoom_level": 32.0
   }
 }

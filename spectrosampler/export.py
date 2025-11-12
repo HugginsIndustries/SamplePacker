@@ -47,7 +47,28 @@ def build_sample_filename(
             label = "+".join(uniq)
         else:
             label = "multi"
-    name = f"{base_name}_sample_{index_str}_{start_rounded}s-{end_rounded}s_detector-{label}"
+    custom_name_fragment = ""
+    raw_custom_name = ""
+    if hasattr(segment, "attrs") and segment.attrs is not None:
+        raw_custom_name = str(segment.attrs.get("name", "")).strip()
+    if raw_custom_name:
+        sanitized_custom = sanitize_filename(raw_custom_name)
+        # Replace whitespace and dot separators to keep the slug compact and extension-free.
+        custom_name_fragment = sanitized_custom.replace(" ", "_").replace(".", "_")
+        # Guard against an empty fragment after sanitisation.
+        if not custom_name_fragment:
+            custom_name_fragment = ""
+
+    filename_parts = [
+        base_name,
+        "sample",
+        index_str,
+    ]
+    if custom_name_fragment:
+        filename_parts.append(custom_name_fragment)
+    filename_parts.append(f"{start_rounded}s-{end_rounded}s")
+    filename_parts.append(f"detector-{label}")
+    name = "_".join(filename_parts)
     return sanitize_filename(name)
 
 

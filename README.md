@@ -10,7 +10,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 
 - **Guided Workspace** – Welcome screen with recent projects/audio, autosave controls, and persistent window layout.
 - **Detection Engine** – Multiple detectors (auto mix, voice VAD, transient, non-silence energy, spectral interestingness) with per-mode thresholds, merge rules, gap/duration guards, and multi-core processing control (`CPU workers`). Voice VAD pre-filters audio with a configurable 200–4500 Hz band-pass before WebRTC scoring so speech-focused projects stay cleaner.
-- **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (disable others, center/fill view), and lockable grid snapping (time or musical bars).
+- **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (play, disable, edit name, center/fill view, delete), and lockable grid snapping (time or musical bars).
 - **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, live playback indicator on the spectrogram, and sample table shortcuts (center/fill/play/delete).
 - **Export Pipeline** – Per-project format, sample rate, bit depth, channel configuration, and padding. Export selected samples without re-encoding by default (WAV/FLAC supported out of the box).
 - **Session Safety** – Project files capture every setting, autosave keeps rotating backups, and overlap resolution dialog protects existing edits when re-running detection.
@@ -89,7 +89,7 @@ spectrosampler-gui --version          Show version and exit
 - **Top center** – Sample player: scrubbable transport, loop toggle, navigation controls, and live metadata.
 - **Spectrogram canvas** – Zoom/pan, drag handles to edit sample bounds, create regions by dragging. Context menu adds disable/enable actions.
 - **Navigator overview** – Mini spectrogram for fast navigation, drag edges to resize view.
-- **Info table** – Grid of every detected sample with enable toggle, center/fill shortcuts, detector name, start/end/duration editing, and per-row delete.
+- **Info table** – Grid of every detected sample with enable toggle, optional Name field (feeds export filenames), center/fill shortcuts, detector name, start/end/duration editing, and per-row delete.
 
 ### Persistence & Safety
 - Autosave is on by default (Settings → Auto-save). Interval is configurable; autosaves live in the system temp directory.
@@ -107,6 +107,7 @@ spectrosampler-gui --version          Show version and exit
 
 ### Reviewing & Editing
 - Select samples in the spectrogram or info table (they stay in sync).
+- Right-click a segment to rename it; the chosen name appears beneath the sample ID on the spectrogram and flows into export filenames.
 - Use **Duration Edits** (Edit menu) to expand/contract or stretch from start/end.
 - Re-order or re-rank samples automatically (Edit → Auto Sample Order / Re-order Samples).
 - Toggle display of disabled samples (View menu).
@@ -117,6 +118,7 @@ spectrosampler-gui --version          Show version and exit
 ### Exporting
 - Choose format, sample rate, bit depth, and channels from the Export menu (set sample rate to `0` or pick “None (original)” for bit depth/channels to inherit source values).
 - Configure pre/post padding to add silence to each export.
+- Optionally enter a per-sample Name in the info table; it slots into the filename slug between the index and time range.
 - Only enabled & checked samples in the info table are exported. Default format preserves original audio (no re-encode if parameters match).
 - Exported filenames are sanitized automatically, so reserved characters and Windows device names never block writing files on Windows, macOS, or Linux.
 
@@ -173,7 +175,7 @@ Project saves capture:
 
 - Audio file reference (re-locate if moved)
 - Detection settings, timing guards, filter values
-- Sample metadata (start/end/duration, detector name, enabled flag)
+- Sample metadata (start/end/duration, detector name, enabled flag, per-sample Name)
 - Export configuration (format, rate, padding, channels, bit depth)
 - Grid settings and UI layout (splitter sizes, panels hidden/shown)
 - Recent playback state (current view, zoom)

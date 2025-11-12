@@ -1,14 +1,15 @@
-"""High-performance table model for samples (columns) and 8 logical rows.
+"""High-performance table model for samples (columns) and 9 logical rows.
 
 Rows:
 0 Enable (checkbox)
-1 Center/Fill (painted buttons via delegate)
-2 Start (editable float)
-3 End (editable float)
-4 Duration (editable float)
-5 Detector (label)
-6 Play (painted button via delegate)
-7 Delete (painted button via delegate)
+1 Name (optional text, editable)
+2 Center/Fill (painted buttons via delegate)
+3 Start (editable float)
+4 End (editable float)
+5 Duration (editable float)
+6 Detector (label)
+7 Play (painted button via delegate)
+8 Delete (painted button via delegate)
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor
 
 from spectrosampler.detectors.base import Segment
 
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class SampleTableModel(QAbstractTableModel):
-    """Table model mapping one sample per column and 8 logical rows.
+    """Table model mapping one sample per column and 9 logical rows.
 
     Supports incremental column reveal to avoid blocking the UI on large sets.
     """
@@ -61,8 +63,8 @@ class SampleTableModel(QAbstractTableModel):
             seg = self._segments[column]
             seg.start = start
             seg.end = end
-            top_left = self.index(2, column)
-            bottom_right = self.index(4, column)
+            top_left = self.index(3, column)
+            bottom_right = self.index(5, column)
             self.dataChanged.emit(top_left, bottom_right, [Qt.DisplayRole, Qt.EditRole])
 
     def segments(self) -> list[Segment]:
@@ -70,7 +72,7 @@ class SampleTableModel(QAbstractTableModel):
 
     # QAbstractTableModel overrides
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
-        return 8
+        return 9
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
         return self._visible_count
@@ -83,6 +85,7 @@ class SampleTableModel(QAbstractTableModel):
         # Vertical headers: fixed row labels
         labels = [
             "Enable",
+            "Name",
             "Center",
             "Start",
             "End",
@@ -116,40 +119,53 @@ class SampleTableModel(QAbstractTableModel):
                 return int(Qt.AlignCenter)
             return None
         if row == 1:
+            name_value = ""
+            if hasattr(seg, "attrs") and seg.attrs is not None:
+                name_value = str(seg.attrs.get("name", "")).strip()
+            if role in (Qt.DisplayRole, Qt.EditRole):
+                if role == Qt.DisplayRole:
+                    return name_value if name_value else "Name (optional)"
+                return name_value
+            if role == Qt.ForegroundRole and not name_value:
+                return QBrush(QColor(160, 160, 160))
+            if role == Qt.TextAlignmentRole:
+                return int(Qt.AlignCenter)
+            return None
+        if row == 2:
             # Center/Fill buttons are painted by delegate
             if role == Qt.DisplayRole:
                 return "Center/Fill"
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
-        if row == 2:
+        if row == 3:
             if role in (Qt.DisplayRole, Qt.EditRole):
                 return f"{seg.start:.3f}" if role == Qt.DisplayRole else seg.start
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
-        if row == 3:
+        if row == 4:
             if role in (Qt.DisplayRole, Qt.EditRole):
                 return f"{seg.end:.3f}" if role == Qt.DisplayRole else seg.end
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
-        if row == 4:
+        if row == 5:
             if role in (Qt.DisplayRole, Qt.EditRole):
                 dur = max(0.0, seg.end - seg.start)
                 return f"{dur:.3f}" if role == Qt.DisplayRole else dur
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
-        if row == 5:
+        if row == 6:
             if role == Qt.DisplayRole:
                 return seg.detector
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
-        if row in (6, 7):
+        if row in (7, 8):
             if role == Qt.DisplayRole:
-                return "▶" if row == 6 else "×"
+                return "▶" if row == 7 else "×"
             if role == Qt.TextAlignmentRole:
                 return int(Qt.AlignCenter)
             return None
@@ -162,7 +178,7 @@ class SampleTableModel(QAbstractTableModel):
         base = Qt.ItemIsSelectable | Qt.ItemIsEnabled
         if row == 0:
             return base | Qt.ItemIsUserCheckable
-        if row in (2, 3, 4):
+        if row in (1, 3, 4, 5):
             return base | Qt.ItemIsEditable
         return base
 
@@ -184,32 +200,44 @@ class SampleTableModel(QAbstractTableModel):
             self.enabledToggled.emit(col, enabled)
             return True
         try:
-            if row == 2 and role == Qt.EditRole:
+            if row == 1 and role == Qt.EditRole:
+                name_value = str(value).strip()
+                if not hasattr(seg, "attrs") or seg.attrs is None:
+                    seg.attrs = {}
+                if name_value:
+                    seg.attrs["name"] = name_value
+                else:
+                    seg.attrs.pop("name", None)
+                self.dataChanged.emit(
+                    index, index, [Qt.DisplayRole, Qt.EditRole, Qt.ForegroundRole]
+                )
+                return True
+            if row == 3 and role == Qt.EditRole:
                 new_start = float(value)
                 seg.start = max(0.0, new_start)
                 # keep end >= start + epsilon
                 if seg.end <= seg.start:
                     seg.end = seg.start + 0.01
                 self.dataChanged.emit(
-                    self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
-                )
-                self.timesEdited.emit(col, seg.start, seg.end)
-                return True
-            if row == 3 and role == Qt.EditRole:
-                new_end = float(value)
-                seg.end = max(seg.start + 0.01, new_end)
-                self.dataChanged.emit(
-                    self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
+                    self.index(3, col), self.index(5, col), [Qt.DisplayRole, Qt.EditRole]
                 )
                 self.timesEdited.emit(col, seg.start, seg.end)
                 return True
             if row == 4 and role == Qt.EditRole:
+                new_end = float(value)
+                seg.end = max(seg.start + 0.01, new_end)
+                self.dataChanged.emit(
+                    self.index(3, col), self.index(5, col), [Qt.DisplayRole, Qt.EditRole]
+                )
+                self.timesEdited.emit(col, seg.start, seg.end)
+                return True
+            if row == 5 and role == Qt.EditRole:
                 new_duration = float(value)
                 if new_duration > 0:
                     # Let controller decide how to apply; keep start same and extend end for now
                     seg.end = seg.start + new_duration
                     self.dataChanged.emit(
-                        self.index(2, col), self.index(4, col), [Qt.DisplayRole, Qt.EditRole]
+                        self.index(3, col), self.index(5, col), [Qt.DisplayRole, Qt.EditRole]
                     )
                     self.durationEdited.emit(col, new_duration)
                     return True
