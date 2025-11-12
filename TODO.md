@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 26 items, P2: 20 items_
+_Summary: P0: 0 items, P1: 24 items, P2: 20 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -228,9 +228,3 @@ _Summary: P0: 0 items, P1: 26 items, P2: 20 items_
 - [ ] [P2] Add performance benchmarks
   - Track detection, processing, and UI operations over time.
   - Acceptance: Baselines defined; regressions flagged.
-- [ ] [P1] Add edge case tests
-  - Very short/long files, unsupported/corrupt files, boundary conditions.
-  - Acceptance: Clear error messages and no crashes.
-- [ ] [P1] Add error handling tests
-  - FFmpeg missing/failures, invalid settings.
-  - Acceptance: Expected dialogs and logs, no uncaught exceptions.
