@@ -1,6 +1,7 @@
 """DAW-style spectrogram widget with zoom, pan, and sample markers."""
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -40,6 +41,7 @@ class SpectrogramWidget(QWidget):
     sample_center_fill_requested = Signal(int)  # (index)
     # Emitted whenever the visible time range changes (start_time, end_time)
     view_changed = Signal(float, float)
+    selection_changed = Signal(list)
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize spectrogram widget.
@@ -83,6 +85,8 @@ class SpectrogramWidget(QWidget):
         # Segments
         self._segments: list[Segment] = []
         self._selected_index: int | None = None
+        self._selected_indexes: set[int] = set()
+        self._selection_anchor: int | None = None
 
         # Grid
         self._grid_manager = GridManager()
@@ -264,6 +268,8 @@ class SpectrogramWidget(QWidget):
         """
         self._segments = segments
         self._selected_index = None
+        self._selected_indexes.clear()
+        self._selection_anchor = None
         if self._playback_segment_index is not None:
             if not (0 <= self._playback_segment_index < len(self._segments)):
                 self._playback_segment_index = None
@@ -315,8 +321,150 @@ class SpectrogramWidget(QWidget):
         Args:
             index: Segment index or None.
         """
-        self._selected_index = index
-        self._update_overlays_only()
+        if index is None:
+            self.set_selected_indexes([])
+        else:
+            self.set_selected_indexes([index], anchor=index)
+
+    def set_selected_indexes(self, indexes: Iterable[int], *, anchor: int | None = None) -> None:
+        """Set the current selection to the provided segment indexes."""
+
+        normalized = {int(idx) for idx in indexes if isinstance(idx, int)}
+        self._apply_selection(normalized, anchor, anchor)
+
+    def _apply_selection(
+        self,
+        indexes: set[int],
+        anchor: int | None,
+        active: int | None,
+    ) -> None:
+        """Apply selection state and emit signals if anything changed."""
+
+        if indexes:
+            max_index = len(self._segments) - 1
+            indexes = {idx for idx in indexes if 0 <= idx <= max_index}
+            if not indexes:
+                anchor = None
+                active = None
+            else:
+                if anchor is None or anchor not in indexes:
+                    anchor = sorted(indexes)[-1]
+                if active is None or active not in indexes:
+                    active = anchor
+        else:
+            anchor = None
+            active = None
+
+        changed = indexes != self._selected_indexes or anchor != self._selection_anchor
+        active_changed = active != self._selected_index
+
+        self._selected_indexes = indexes
+        self._selection_anchor = anchor
+        self._selected_index = active
+
+        if changed or active_changed:
+            self._update_overlays_only()
+
+        if changed:
+            self.selection_changed.emit(sorted(indexes))
+
+        if active_changed and active is not None:
+            self.sample_selected.emit(active)
+
+    def handle_selection_click(self, clicked_index: int, *, ctrl: bool, shift: bool) -> None:
+        """Update selection state in response to a user click."""
+
+        new_selection = set(self._selected_indexes)
+        active = clicked_index
+        anchor_for_apply: int | None = None
+
+        if shift:
+            base_anchor = self._selected_index
+            if base_anchor is None:
+                base_anchor = self._selection_anchor
+            if base_anchor is None:
+                base_anchor = clicked_index
+            start = min(base_anchor, clicked_index)
+            end = max(base_anchor, clicked_index)
+            range_selection = set(range(start, end + 1))
+            new_selection.update(range_selection)
+            anchor_for_apply = clicked_index
+        elif ctrl:
+            if clicked_index in new_selection:
+                new_selection.remove(clicked_index)
+                if new_selection:
+                    active = sorted(new_selection)[-1]
+                    anchor_for_apply = active
+                else:
+                    active = None
+                    anchor_for_apply = None
+            else:
+                new_selection.add(clicked_index)
+                anchor_for_apply = clicked_index
+        else:
+            new_selection = {clicked_index}
+            anchor_for_apply = clicked_index
+
+        if not new_selection:
+            self._apply_selection(set(), None, None)
+        else:
+            if anchor_for_apply is None or anchor_for_apply not in new_selection:
+                anchor_for_apply = sorted(new_selection)[-1]
+            if active is None or active not in new_selection:
+                active = anchor_for_apply
+            self._apply_selection(new_selection, anchor_for_apply, active)
+
+    def fit_selection(self, indexes: Iterable[int] | None = None) -> bool:
+        """Zoom the view to tightly frame the selected segments.
+
+        Args:
+            indexes: Optional iterable of segment indexes. When omitted, uses the
+                internally tracked selection.
+
+        Returns:
+            True if a view change was applied, False when no selection is available.
+        """
+
+        if self._duration <= 0:
+            return False
+
+        if indexes is None:
+            if self._selected_indexes:
+                indexes = self._selected_indexes
+            elif self._selected_index is not None:
+                indexes = [self._selected_index]
+            else:
+                return False
+
+        spans: list[tuple[float, float]] = []
+        for idx in indexes:
+            if isinstance(idx, int) and 0 <= idx < len(self._segments):
+                seg = self._segments[idx]
+                start = min(seg.start, seg.end)
+                end = max(seg.start, seg.end)
+                if end > start:
+                    spans.append((start, end))
+
+        if not spans:
+            return False
+
+        start_time = max(0.0, min(start for start, _ in spans))
+        end_time = min(self._duration, max(end for _, end in spans))
+
+        if end_time <= start_time:
+            end_time = min(self._duration, start_time + 0.1)
+
+        visible_span = max(0.01, end_time - start_time)
+        margin = max(0.05, min(1.0, visible_span * 0.05))
+
+        new_start = max(0.0, start_time - margin)
+        new_end = min(self._duration, end_time + margin)
+
+        if new_end - new_start < 0.01:
+            new_end = min(self._duration, new_start + 0.01)
+
+        self.set_time_range(new_start, new_end)
+        return True
 
     def set_grid_manager(self, grid_manager: GridManager) -> None:
         """Set grid manager.
@@ -609,13 +757,14 @@ class SpectrogramWidget(QWidget):
             if seg.end < self._start_time or seg.start > self._end_time:
                 continue
             color = self._get_segment_color(seg.detector)
-            alpha = 0.3 if i == self._selected_index else 0.2
+            is_selected = i in self._selected_indexes
+            alpha = 0.35 if i == self._selected_index else (0.28 if is_selected else 0.2)
             default_edge = self._theme_colors.get(
                 "border", self._theme_colors.get("text", QColor("white"))
             )
             edge_color = (
                 self._theme_colors["selection_border"].name()
-                if i == self._selected_index
+                if is_selected
                 else (default_edge.name() if isinstance(default_edge, QColor) else "white")
             )
             line_style = "-"
@@ -978,9 +1127,19 @@ class SpectrogramWidget(QWidget):
             # Check if clicking on a segment
             clicked_index = self._find_segment_at_time(time)
             if clicked_index is not None:
-                # Update selection immediately
-                self._selected_index = clicked_index
-                self.sample_selected.emit(clicked_index)
+                modifiers = (
+                    event.guiEvent.modifiers()
+                    if getattr(event, "guiEvent", None) is not None
+                    else Qt.KeyboardModifier.NoModifier
+                )
+                ctrl_pressed = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                shift_pressed = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+                self.handle_selection_click(
+                    clicked_index,
+                    ctrl=ctrl_pressed,
+                    shift=shift_pressed,
+                )
 
                 # Check if clicking on resize handle
                 seg = self._segments[clicked_index]
@@ -1027,6 +1186,8 @@ class SpectrogramWidget(QWidget):
                     self._drag_start_timer.start(self._min_hold_duration_ms)
             else:
                 # Start creating new sample (no delay needed)
+                if self._selected_indexes:
+                    self._apply_selection(set(), None, None)
                 self.sample_create_started.emit()
                 self._creating_sample = True
                 self._create_start_time = time
@@ -1380,8 +1541,7 @@ class SpectrogramWidget(QWidget):
                         clicked_index = self._find_segment_at_time(time)
                         if clicked_index is not None:
                             # Double-click to play
-                            self._selected_index = clicked_index
-                            self.sample_selected.emit(clicked_index)
+                            self._apply_selection({clicked_index}, clicked_index, clicked_index)
                             self.sample_play_requested.emit(clicked_index)
                             return True
                     except (RuntimeError, ValueError) as exc:

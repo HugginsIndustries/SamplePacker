@@ -13,7 +13,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 - **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (play, disable, edit name, center/fill view, delete), and lockable grid snapping (time or musical bars).
 - **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, live playback indicator on the spectrogram, and sample table shortcuts (center/fill/play/delete).
 - **Export Pipeline** – Per-project format, sample rate, bit depth, channel configuration, and padding. Export selected samples without re-encoding by default (WAV/FLAC supported out of the box).
-- **Session Safety** – Project files capture every setting (including overlap resolution defaults and editor layout), autosave keeps rotating backups, and the overlap dialog protects existing edits when re-running detection.
+- **Session Safety** – Project files capture every setting (including overlap resolution defaults and editor layout), autosave keeps rotating backups, the overlap dialog protects existing edits when re-running detection, and a Help → Diagnostics panel surfaces FFmpeg and audio device information for quick troubleshooting.
 
 > Looking for GUI usage details and walkthrough screenshots? See `docs/GUI_GUIDE.md`.
 
@@ -108,7 +108,9 @@ spectrosampler-gui --version          Show version and exit
 
 ### Reviewing & Editing
 - Select samples in the spectrogram or info table (they stay in sync).
+- Use `Ctrl`-click to toggle additional samples and `Shift`-click to extend the selection in both views for bulk zooming, editing, and export operations.
 - Right-click a segment to rename it; the chosen name appears beneath the sample ID on the spectrogram and flows into export filenames.
+- Frame one or more samples instantly with **View → Zoom to Selection** (`Ctrl+Shift+F`) to inspect edits without manual panning.
 - Use **Duration Edits** (Edit menu) to expand/contract or stretch from start/end.
 - Re-order or re-rank samples automatically (Edit → Auto Sample Order / Re-order Samples).
 - Toggle display of disabled samples (View menu).
@@ -163,6 +165,7 @@ See `docs/DEVELOPER_API.md` for a module map, minimal script, and extension patt
 |  | Delete Sample | `Delete` |
 | Navigation | Zoom In / Out | `Ctrl++` / `Ctrl+-` |
 |  | Fit to Window | `Ctrl+0` |
+|  | Zoom to Selection | `Ctrl+Shift+F` |
 |  | Pan | Arrow keys or drag in navigator |
 |  | Play Sample | `Space` (double-click sample) |
 | Grid | Toggle Snap | `G` |
@@ -190,6 +193,7 @@ Files are JSON; you can inspect or version-control them. Autosaves keep the last
 
 - **FFmpeg not found** – Ensure it is on PATH (`ffmpeg -version`).
 - **Audio file won’t open** – The error dialog spells out the cause (missing file, unsupported codec, permissions, or FFmpeg availability) and suggested fixes; follow the guidance or convert the file to WAV/FLAC.
+- **Need system details for support?** – Open Help → Diagnostics to copy FFmpeg, audio device, and environment details into bug reports.
 - **`webrtcvad` build errors (Windows)** – Install Visual Studio Build Tools or skip VAD.
 - **GUI feels sluggish on big files** – Lower refresh rate (View → Limit UI Refresh Rate) or disable disabled-sample display.
 - **Overlap resolution keeps popping up** – Set a default choice, tick “Remember my choice” (it saves inside the project), or adjust detection thresholds to reduce duplicates.

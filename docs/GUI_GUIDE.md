@@ -33,6 +33,8 @@ Autosave is enabled by default. If SpectroSampler detects an autosave newer than
 | **Navigator Overview (below spectrogram)** | Miniature spectrogram with a draggable viewport rectangle for quick jumps. |
 | **Sample Table (bottom)** | Per-sample enable checkbox, optional Name text field (feeds export filenames), start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
 
+`Ctrl`-click toggles additional samples and `Shift`-click extends the selection range; the spectrogram and table share the same selection so bulk edits, zooming, and export preparation stay synchronized.
+
 All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram. SpectroSampler saves these positions with the project so the layout returns exactly as you left it.
 
 > Screenshot placeholder: `docs/images/main-window-overview.png`
@@ -41,10 +43,10 @@ All splitters are draggable. Collapse the player or info table from the View men
 
 - **File** – Project lifecycle (new/open/save), audio import, recent files.
 - **Edit** – Undo/redo, re-run detection, auto sample ordering, bulk delete/disable, Duration Edits (expand/contract, stretch from start/end).
-- **View** – Zoom controls, toggle info table/player visibility, show disabled samples, refresh-rate limiter, grid settings, and theme selection (System/Dark/Light).
+- **View** – Zoom controls (including Zoom to Selection with `Ctrl+Shift+F`), toggle info table/player visibility, show disabled samples, refresh-rate limiter, grid settings, and theme selection (System/Dark/Light).
 - **Export** – Pre/post padding, format (WAV/FLAC), sample rate, bit depth, channels.
 - **Settings** – Autosave toggle/interval, clear recent projects/audio.
-- **Help** – Verbose logging option and about dialog.
+- **Help** – Diagnostics panel (FFmpeg status, audio devices, environment), verbose logging toggle, and the about dialog.
 
 Keyboard shortcuts mirror these actions; see [Appendix A](#appendix-a-keyboard-shortcuts).
 
@@ -113,6 +115,7 @@ When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-
 - **Zoom** by dragging the navigator rectangle edges, or using scroll wheel.
 - **Pan** by dragging the navigator rectangle, or using Alt + scroll wheel.
 - **Timeline jumps** by clicking the navigator bar below the spectrogram.
+- Use **View → Zoom to Selection** (`Ctrl+Shift+F`) to frame the active segment(s) instantly without manual panning.
 
 ![Animated overview of zooming and panning](/docs/gifs/spectrogram-nav.gif "Spectrogram navigation demo")
 
@@ -126,7 +129,7 @@ When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-
 
 ### 4.3 Sync with the Sample Table
 
-Selecting a sample from the table highlights it in the spectrogram and vice versa. Table columns provide:
+Selecting a sample from the table highlights it in the spectrogram and vice versa. Use `Ctrl`-click to toggle extra samples and `Shift`-click to extend the selection; both views stay synchronized for multi-sample edits. Table columns provide:
 
 - **Enable** – Include/exclude from export.
 - **Name (optional)** – Text box that feeds into the export filename; leave blank to keep the original pattern.
@@ -223,6 +226,7 @@ Large projects benefit from leaving the info table collapsed while you fine-tune
 | Overlap dialog shows every run | Set a preferred default and tick “Remember my choice,” then re-run detection. |
 | Playback is silent | Check workstation audio output, confirm the sample’s Enable checkbox is on, and ensure the sample isn’t muted in your OS mixer. |
 | GUI stutters on long files | Lower the refresh rate, collapse panels, or reduce zoom. Close other heavy applications. |
+| Need environment details for support | Open Help → Diagnostics and copy the summary into your bug report. |
 
 Run `spectrosampler-gui --verbose` to capture additional diagnostics in the console when filing bug reports.
 
@@ -241,13 +245,14 @@ Run `spectrosampler-gui --verbose` to capture additional diagnostics in the cons
 | Edit | Detect Samples | `Ctrl+D` |
 |  | Undo / Redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 |  | Delete Sample | `Delete` |
-| View | Zoom In / Out / Fit | `Ctrl++`, `Ctrl+-`, `Ctrl+0` |
+| View | Zoom In / Out / Fit / Zoom to Selection | `Ctrl++`, `Ctrl+-`, `Ctrl+0`, `Ctrl+Shift+F` |
 |  | Toggle Snap | `G` |
 |  | Toggle Disabled Samples | `View → Show Disabled Samples` (no default shortcut) |
 | Navigation | Pan | Arrow keys or drag navigator |
 |  | Play Selected Sample | `Space` or double-click |
 |  | Seek Within Sample | Drag the player slider |
 | App | Quit | `Ctrl+Q` |
+| Help | Open Diagnostics | Help → Diagnostics (no default shortcut) |
 
 ---
 

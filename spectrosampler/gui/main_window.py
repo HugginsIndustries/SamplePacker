@@ -5,11 +5,11 @@ import logging
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPoint, QSize, Qt, QUrl
+from PySide6.QtCore import QItemSelectionModel, QPoint, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -33,6 +33,7 @@ from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.autosave import AutoSaveManager
 from spectrosampler.gui.detection_manager import DetectionManager
 from spectrosampler.gui.detection_settings import DetectionSettingsPanel
+from spectrosampler.gui.diagnostics_dialog import DiagnosticsDialog
 from spectrosampler.gui.grid_manager import GridManager, GridMode, GridSettings, Subdivision
 from spectrosampler.gui.loading_screen import LoadingScreen
 from spectrosampler.gui.navigator_scrollbar import NavigatorScrollbar
@@ -94,6 +95,9 @@ class MainWindow(QMainWindow):
         self._paused_position = 0  # milliseconds
         self._playback_stopped = False  # Flag to prevent restart after explicit stop
         self._media_status_handler: Callable[[QMediaPlayer.MediaStatus], None] | None = None
+        self._selected_sample_indexes: list[int] = []
+        self._active_sample_index: int | None = None
+        self._syncing_table_selection = False
 
         # Undo/redo stacks
         self._undo_stack: list[list[Segment]] = []
@@ -128,6 +132,7 @@ class MainWindow(QMainWindow):
         self._theme_action_group: QActionGroup | None = None
         self._theme_mode = self._settings_manager.get_theme_preference()
         self._theme_manager.apply_theme(self._theme_mode)
+        self._zoom_selection_action: QAction | None = None
 
         # Auto-save manager
         self._autosave_manager = AutoSaveManager(self)
@@ -243,6 +248,7 @@ class MainWindow(QMainWindow):
         self._spectrogram_widget.sample_name_edit_requested.connect(self._on_edit_sample_name)
         self._spectrogram_widget.sample_center_requested.connect(self._on_center_clicked)
         self._spectrogram_widget.sample_center_fill_requested.connect(self._on_fill_clicked)
+        self._spectrogram_widget.selection_changed.connect(self._on_spectrogram_selection_changed)
         # Keep navigator highlight synced to editor zoom/pan
         self._spectrogram_widget.view_changed.connect(
             lambda s, e: self._navigator.set_view_range(s, e)
@@ -289,10 +295,11 @@ class MainWindow(QMainWindow):
         self._sample_table_view.setItemDelegate(self._sample_table_delegate)
         # Selection: columns
         self._sample_table_view.setSelectionBehavior(QTableView.SelectionBehavior.SelectColumns)
-        self._sample_table_view.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self._sample_table_view.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         # Policies
         self._sample_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._sample_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._sample_table_view.pressed.connect(self._on_sample_table_pressed)
         # Sizing: fixed column width and uniform row heights
         try:
             self._sample_table_view.verticalHeader().setDefaultSectionSize(30)
@@ -324,12 +331,9 @@ class MainWindow(QMainWindow):
         self._sample_table_model.durationEdited.connect(self._on_model_duration_edited)
 
         # Keep spectrogram selection in sync when user selects a column
-        def on_selection_changed(_selected, _deselected):
-            idx = self._sample_table_view.currentIndex()
-            if idx.isValid():
-                self._on_sample_selected(idx.column())
-
-        self._sample_table_view.selectionModel().selectionChanged.connect(on_selection_changed)
+        selection_model = self._sample_table_view.selectionModel()
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(lambda *_: None)
 
         # Main vertical splitter for editor/sample table
         self._main_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -605,6 +609,12 @@ class MainWindow(QMainWindow):
         fit_action.triggered.connect(self._on_fit_to_window)
         view_menu.addAction(fit_action)
 
+        self._zoom_selection_action = QAction("Zoom to &Selection", self)
+        self._zoom_selection_action.setEnabled(False)
+        self._zoom_selection_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        self._zoom_selection_action.triggered.connect(self._on_zoom_to_selection)
+        view_menu.addAction(self._zoom_selection_action)
+
         view_menu.addSeparator()
 
         # Hide Info Table action
@@ -730,6 +740,10 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(clear_recent_audio_files_menu_action)
 
         help_menu = menubar.addMenu("&Help")
+
+        diagnostics_action = QAction("&Diagnostics", self)
+        diagnostics_action.triggered.connect(self._on_show_diagnostics)
+        help_menu.addAction(diagnostics_action)
 
         # Verbose Log toggle (default ON)
         self._verbose_log_action = QAction("Verbose &Log", self)
@@ -2103,21 +2117,39 @@ class MainWindow(QMainWindow):
 
         self._load_persisted_export_settings()
 
+    def _on_sample_table_pressed(self, index) -> None:
+        """Capture modifiers when the table is clicked."""
+
+        if not index.isValid():
+            return
+        modifiers = QApplication.keyboardModifiers()
+        ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        column = index.column()
+        self._spectrogram_widget.handle_selection_click(column, ctrl=ctrl, shift=shift)
+        self._active_sample_index = column
+        self._sync_table_selection_from_state()
+
+    def _on_spectrogram_selection_changed(self, indexes: list[int]) -> None:
+        """Sync table selection when the spectrogram selection changes."""
+
+        normalized = self._normalize_sample_indexes(indexes)
+        self._selected_sample_indexes = normalized
+        self._active_sample_index = normalized[-1] if normalized else None
+
+        self._sync_table_selection_from_state()
+
+        self._update_zoom_selection_action()
+
     def _on_sample_selected(self, index: int) -> None:
-        """Handle sample selection.
+        """Handle sample selection index notifications from the spectrogram."""
 
-        Args:
-            index: Sample index.
-        """
-        # Update table selection (column-based)
-        try:
-            if self._sample_table_model.columnCount() > index:
-                self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, index))
-        except (RuntimeError, AttributeError) as exc:
-            logger.debug("Failed to update sample table selection: %s", exc, exc_info=exc)
-        self._spectrogram_widget.set_selected_index(index)
-
-        # Don't update player widget - player should only show info for currently playing sample
+        if index < 0:
+            return
+        self._active_sample_index = index
+        if index not in self._selected_sample_indexes:
+            self._spectrogram_widget.set_selected_indexes([index], anchor=index)
+        self._update_zoom_selection_action()
 
     def _on_sample_moved(self, index: int, start: float, end: float) -> None:
         """Handle sample moved.
@@ -2772,6 +2804,133 @@ class MainWindow(QMainWindow):
                 seg.attrs = {}
             seg.attrs.setdefault("enabled", True)
         self._sample_table_model.set_segments(segments)
+        if segments:
+            if self._selected_sample_indexes:
+                normalized = self._normalize_sample_indexes(self._selected_sample_indexes)
+                self._spectrogram_widget.set_selected_indexes(
+                    normalized, anchor=self._active_sample_index
+                )
+            else:
+                self._update_zoom_selection_action()
+        else:
+            self._clear_sample_selection()
+
+    def _sync_table_selection_from_state(self) -> None:
+        """Synchronize the table's selection to match internal state."""
+
+        if self._syncing_table_selection:
+            return
+
+        selection_model = self._sample_table_view.selectionModel()
+        if selection_model is None:
+            return
+
+        column_count = self._sample_table_model.columnCount()
+        normalized = [col for col in self._selected_sample_indexes if 0 <= col < column_count]
+
+        self._syncing_table_selection = True
+        try:
+            selection_model.clearSelection()
+            for col in normalized:
+                idx = self._sample_table_model.index(0, col)
+                selection_model.select(
+                    idx,
+                    QItemSelectionModel.Columns | QItemSelectionModel.Select,
+                )
+            if (
+                self._active_sample_index is not None
+                and 0 <= self._active_sample_index < column_count
+            ):
+                current = self._sample_table_model.index(0, self._active_sample_index)
+                selection_model.setCurrentIndex(current, QItemSelectionModel.NoUpdate)
+                self._sample_table_view.scrollTo(current)
+        finally:
+            self._syncing_table_selection = False
+
+    def _normalize_sample_indexes(self, indexes: Iterable[int]) -> list[int]:
+        """Filter and de-duplicate sample indexes based on current segments."""
+
+        if not self._pipeline_wrapper:
+            return []
+
+        limit = len(self._pipeline_wrapper.current_segments)
+        seen: set[int] = set()
+        normalized: list[int] = []
+        for idx in indexes:
+            if not isinstance(idx, int):
+                continue
+            if idx < 0 or idx >= limit:
+                continue
+            if idx not in seen:
+                normalized.append(idx)
+                seen.add(idx)
+        return normalized
+
+    def _get_selected_sample_indexes(self) -> list[int]:
+        """Return currently selected sample column indexes."""
+
+        return self._normalize_sample_indexes(self._selected_sample_indexes)
+
+    def _has_valid_selection(self) -> bool:
+        """Return True if the stored selection is valid for the current segments."""
+
+        if self._pipeline_wrapper is None:
+            self._selected_sample_indexes = []
+            self._active_sample_index = None
+            return False
+
+        segments = self._pipeline_wrapper.current_segments
+        if not segments:
+            self._selected_sample_indexes = []
+            self._active_sample_index = None
+            return False
+
+        normalized = self._normalize_sample_indexes(self._selected_sample_indexes)
+        if not normalized:
+            self._selected_sample_indexes = []
+            self._active_sample_index = None
+            return False
+
+        self._selected_sample_indexes = normalized
+        if self._active_sample_index not in normalized:
+            self._active_sample_index = normalized[-1]
+
+        return True
+
+    def _update_zoom_selection_action(self) -> None:
+        """Enable or disable the zoom-to-selection action based on current state."""
+
+        if self._zoom_selection_action is None:
+            return
+
+        enabled = self._has_valid_selection()
+        self._zoom_selection_action.setEnabled(enabled)
+
+    def _clear_sample_selection(self) -> None:
+        """Clear current sample selection in views and disable dependent actions."""
+
+        self._selected_sample_indexes = []
+        self._active_sample_index = None
+        try:
+            self._spectrogram_widget.set_selected_indexes([])
+        except AttributeError:
+            pass
+        self._update_zoom_selection_action()
+
+    def _on_zoom_to_selection(self) -> None:
+        """Zoom the spectrogram to the current selection extent."""
+
+        indexes = self._get_selected_sample_indexes()
+        if not indexes:
+            return
+        if not self._spectrogram_widget.fit_selection(indexes):
+            return
+
+    def _on_show_diagnostics(self) -> None:
+        """Display the diagnostics dialog with environment details."""
+
+        dialog = DiagnosticsDialog(self, theme_manager=self._theme_manager)
+        dialog.exec()
 
     def _on_zoom_in(self) -> None:
         """Handle zoom in."""

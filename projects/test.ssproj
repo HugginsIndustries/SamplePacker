@@ -2,7 +2,7 @@
   "version": "1.0",
   "spectrosampler_version": "0.1.0",
   "created": "2025-11-06T01:32:00.700707Z",
-  "modified": "2025-11-12T08:03:53.087603Z",
+  "modified": "2025-11-12T11:57:02.227853Z",
   "audio_path": "C:\\dev\\SamplePacker\\recordings\\field.WAV",
   "segments": [
     {
@@ -156,7 +156,7 @@
       "attrs": {
         "raw_start": 1048.98,
         "raw_end": 1049.3999999999999,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -167,7 +167,7 @@
       "attrs": {
         "raw_start": 1054.47,
         "raw_end": 1054.8899999999999,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -178,7 +178,7 @@
       "attrs": {
         "raw_start": 1060.77,
         "raw_end": 1061.34,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -189,7 +189,7 @@
       "attrs": {
         "raw_start": 1066.35,
         "raw_end": 1066.8899999999999,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -200,7 +200,7 @@
       "attrs": {
         "raw_start": 1077.3,
         "raw_end": 1077.78,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -211,7 +211,7 @@
       "attrs": {
         "raw_start": 1081.74,
         "raw_end": 1082.1599999999999,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -222,7 +222,7 @@
       "attrs": {
         "raw_start": 1085.1,
         "raw_end": 1085.55,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -233,7 +233,7 @@
       "attrs": {
         "raw_start": 1086.8999999999999,
         "raw_end": 1087.5,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -244,7 +244,7 @@
       "attrs": {
         "raw_start": 1092.75,
         "raw_end": 1093.23,
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -794,7 +794,16 @@
       "attrs": {
         "raw_start": 4797.2699999999995,
         "raw_end": 4798.05,
-        "enabled": false
+        "enabled": true
+      }
+    },
+    {
+      "start": 4935.761559197768,
+      "end": 4956.529533271878,
+      "detector": "manual",
+      "score": 1.0,
+      "attrs": {
+        "enabled": true
       }
     },
     {
@@ -903,20 +912,20 @@
     "time_signature_denominator": 4
   },
   "ui_state": {
-    "view_start": 5252.655329869414,
-    "view_end": 5278.437714502096,
+    "view_start": 1035.6043068687563,
+    "view_end": 1127.1724314698074,
     "zoom_level": 32.0,
     "editor_splitter_sizes": [
-      724,
+      400,
       100
     ],
     "player_splitter_sizes": [
       100,
-      614
+      290
     ],
     "main_splitter_sizes": [
-      834,
-      0
+      510,
+      324
     ],
     "timeline_splitter_sizes": [
       300,

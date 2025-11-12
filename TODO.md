@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 23 items, P2: 19 items_
+_Summary: P0: 0 items, P1: 22 items, P2: 17 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -89,12 +89,6 @@ _Summary: P0: 0 items, P1: 23 items, P2: 19 items_
 - [ ] [P1] Add filtering/search in sample table
   - Filter by name, detector, time range, or duration.
   - Acceptance: Text+facet filters reduce visible rows accordingly.
-- [ ] [P1] Add multi-select in sample table
-  - Ctrl/Shift selection enabling bulk operations.
-  - Acceptance: Bulk delete/export/rename across selected rows.
-- [ ] [P2] Add zoom to fit selection
-  - Shortcut/button to fit selected samples in view.
-  - Acceptance: View window adjusts to encompass selected segments.
 - [ ] [P2] Add statistics panel
   - Totals, averages, detector distribution.
   - Acceptance: Panel reflects current table selection and updates live. [Docs Impact]
@@ -178,9 +172,7 @@ _Summary: P0: 0 items, P1: 23 items, P2: 19 items_
 
 ### Utilities
 
-- [ ] [P2] Add diagnostics panel
-  - Show FFmpeg version, audio device info, and environment details.
-  - Acceptance: Accessible from Help; assists in support cases. [Docs Impact]
+- No items currently planned
 
 ## **Performance & Optimization**
 
