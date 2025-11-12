@@ -3,6 +3,7 @@
 import json
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,14 @@ class FFmpegError(Exception):
     """Exception raised when FFmpeg operations fail."""
 
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AudioLoadAdvice:
+    """Represents a user-facing explanation for audio load failures."""
+
+    reason: str
+    suggestion: str
 
 
 def check_ffmpeg() -> bool:
@@ -86,6 +95,77 @@ def get_audio_info(file_path: Path) -> dict:
         "bit_depth": bit_depth,
         "format": fmt.get("format_name", ""),
     }
+
+
+def describe_audio_load_error(file_path: Path | None, error: BaseException) -> AudioLoadAdvice:
+    """Convert low-level audio loading exceptions into user-facing guidance."""
+
+    display_name = file_path.name if isinstance(file_path, Path) else "audio file"
+    message = str(error) if error else ""
+    lower_msg = message.lower()
+
+    if isinstance(error, FileNotFoundError):
+        filename = getattr(error, "filename", "") or ""
+        if filename and Path(filename).name in {"ffprobe", "ffmpeg"}:
+            return AudioLoadAdvice(
+                reason="FFmpeg (ffprobe) is not installed or not on your PATH.",
+                suggestion="Install FFmpeg and ensure the ffprobe executable is accessible, then restart SpectroSampler.",
+            )
+        return AudioLoadAdvice(
+            reason=f"The file '{display_name}' could not be found.",
+            suggestion="Verify the file still exists at that location or choose a different file.",
+        )
+
+    if isinstance(error, PermissionError):
+        return AudioLoadAdvice(
+            reason="SpectroSampler does not have permission to read the selected file.",
+            suggestion="Adjust the file permissions or copy it to a readable location and retry.",
+        )
+
+    if isinstance(error, FFmpegError):
+        if "invalid data" in lower_msg or "unable to find stream info" in lower_msg:
+            return AudioLoadAdvice(
+                reason=f"The file '{display_name}' appears to be corrupted or uses an unsupported codec.",
+                suggestion="Try playing it in another application or convert the file to WAV/FLAC before importing.",
+            )
+        if "no such file or directory" in lower_msg and (
+            "ffmpeg" in lower_msg or "ffprobe" in lower_msg
+        ):
+            return AudioLoadAdvice(
+                reason="FFmpeg (ffprobe) is not installed or not accessible.",
+                suggestion="Install FFmpeg and ensure ffprobe is on your PATH, then restart SpectroSampler.",
+            )
+        if "permission" in lower_msg:
+            return AudioLoadAdvice(
+                reason="FFmpeg reported a permission error while reading the file.",
+                suggestion="Check your file permissions and try again.",
+            )
+        if not check_ffmpeg():
+            return AudioLoadAdvice(
+                reason="FFmpeg tools are not installed or could not be executed.",
+                suggestion="Install FFmpeg and ensure it is available on your PATH, then restart SpectroSampler.",
+            )
+        return AudioLoadAdvice(
+            reason="FFmpeg was unable to analyze the audio file.",
+            suggestion="Review the application log for details or convert the file to WAV/FLAC and try again.",
+        )
+
+    if isinstance(error, ValueError):
+        return AudioLoadAdvice(
+            reason=f"The file '{display_name}' is not a valid audio file.",
+            suggestion="Confirm the file contains audio data and convert it to WAV if necessary.",
+        )
+
+    if isinstance(error, OSError):
+        return AudioLoadAdvice(
+            reason=f"An OS error prevented opening '{display_name}'. {message}",
+            suggestion="Ensure no other program is locking the file and that you have read access.",
+        )
+
+    return AudioLoadAdvice(
+        reason="An unexpected error occurred while opening the audio file.",
+        suggestion="Check the application log for more details or try converting the file to WAV/FLAC.",
+    )
 
 
 def denoise_audio(

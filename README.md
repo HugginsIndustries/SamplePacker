@@ -100,6 +100,7 @@ spectrosampler-gui --version          Show version and exit
 1. Load an audio file (`Ctrl+Shift+O` or drag/drop).
 2. Pick a detector and tune thresholds/timing.
 3. Optionally configure denoise/filtering, sample spread mode, or maximum sample count (1–10,000, default 256).
+   - The panel blocks impossible combinations (for example, a minimum duration longer than the maximum) and shows a red hint explaining what to fix before detection can run.
 4. Click **Detect Samples** (`Ctrl+D`). A loading overlay tracks progress.
 5. If new detections overlap existing samples, the Overlap Resolution dialog lets you choose to discard overlaps, discard duplicates, or keep all (with “remember my choice”).
 
@@ -184,6 +185,7 @@ Files are JSON; you can inspect or version-control them. Autosaves keep the last
 ## Troubleshooting
 
 - **FFmpeg not found** – Ensure it is on PATH (`ffmpeg -version`).
+- **Audio file won’t open** – The error dialog spells out the cause (missing file, unsupported codec, permissions, or FFmpeg availability) and suggested fixes; follow the guidance or convert the file to WAV/FLAC.
 - **`webrtcvad` build errors (Windows)** – Install Visual Studio Build Tools or skip VAD.
 - **GUI feels sluggish on big files** – Lower refresh rate (View → Limit UI Refresh Rate) or disable disabled-sample display.
 - **Overlap resolution keeps popping up** – Set a default choice and tick “Remember my choice,” or adjust detection thresholds to reduce duplicates.

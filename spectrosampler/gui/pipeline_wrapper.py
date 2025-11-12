@@ -1,5 +1,6 @@
 """Wrapper for pipeline processing in GUI context."""
 
+import errno
 import logging
 from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
 from pathlib import Path
@@ -65,6 +66,8 @@ class PipelineWrapper:
             Dictionary with audio metadata.
         """
         try:
+            if not audio_path.exists() or not audio_path.is_file():
+                raise FileNotFoundError(errno.ENOENT, "No such file or directory", str(audio_path))
             from spectrosampler.audio_io import get_audio_info
 
             self.current_audio_path = audio_path

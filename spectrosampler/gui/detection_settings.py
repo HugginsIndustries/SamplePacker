@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QLabel,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -90,6 +91,7 @@ class DetectionSettingsPanel(QWidget):
 
         layout.addWidget(scroll)
         self.setLayout(layout)
+        self._refresh_validation_state()
 
     def _create_detection_group(self) -> QGroupBox:
         """Create detection mode group.
@@ -393,6 +395,7 @@ class DetectionSettingsPanel(QWidget):
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
+        self._refresh_validation_state()
         self.settings_changed.emit()
 
     def _on_detection_pre_pad_changed(self, value: int) -> None:
@@ -481,6 +484,10 @@ class DetectionSettingsPanel(QWidget):
         """Update the max-sample control and optionally persist the provided value."""
         self._set_max_samples_ui_value(value, persist=persist)
 
+    def get_validation_errors(self):
+        """Return current validation errors."""
+        return self._settings.validate()
+
     def _set_max_samples_ui_value(self, value: int, persist: bool) -> None:
         """Clamp, persist, and display the max-sample value without triggering signals."""
         clamped = max(1, min(10_000, int(value)))
@@ -499,3 +506,27 @@ class DetectionSettingsPanel(QWidget):
                 self._settings_manager.set_detection_max_samples(clamped)
             except (TypeError, ValueError, RuntimeError) as exc:
                 logger.debug("Unable to persist max samples %s: %s", clamped, exc, exc_info=exc)
+
+    def _refresh_validation_state(self) -> None:
+        """Update UI elements based on current validation errors."""
+        errors = self._settings.validate()
+        if not hasattr(self, "_validation_label"):
+            self._validation_label = QLabel()
+            self._validation_label.setWordWrap(True)
+            self._validation_label.setStyleSheet("color: #d64545; font-size: 12px;")
+            self._validation_label.setVisible(False)
+            # Insert validation label above the detect button
+            detect_parent = self._detect_button.parent()
+            if isinstance(detect_parent, QWidget):
+                layout = detect_parent.layout()
+                if isinstance(layout, QVBoxLayout):
+                    layout.insertWidget(0, self._validation_label)
+
+        if errors:
+            messages = "\n".join(issue.message for issue in errors)
+            self._validation_label.setText(messages)
+            self._validation_label.setVisible(True)
+            self._detect_button.setEnabled(False)
+        else:
+            self._validation_label.setVisible(False)
+            self._detect_button.setEnabled(True)

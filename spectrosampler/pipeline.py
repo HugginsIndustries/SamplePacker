@@ -396,6 +396,11 @@ def process_file(
     Returns:
         Dictionary with processing results (segments, stats, etc.).
     """
+    validation_issues = settings.validate()
+    if validation_issues:
+        messages = "; ".join(issue.message for issue in validation_issues)
+        raise ValueError(f"Invalid processing settings: {messages}")
+
     logging.info(f"Processing: {input_path} -> {output_dir}")
 
     # Prepare directories

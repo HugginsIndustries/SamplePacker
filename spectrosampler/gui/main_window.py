@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from spectrosampler.audio_io import FFmpegError
+from spectrosampler.audio_io import FFmpegError, describe_audio_load_error
 from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.autosave import AutoSaveManager
 from spectrosampler.gui.detection_manager import DetectionManager
@@ -998,7 +998,14 @@ class MainWindow(QMainWindow):
             if self._overview_manager.is_generating():
                 self._overview_manager.cancel()
             self._loading_screen.hide_overlay()
-            QMessageBox.critical(self, "Error", f"Failed to load audio file:\n{str(e)}")
+            advice = describe_audio_load_error(file_path, e)
+            QMessageBox.critical(
+                self,
+                "Audio Load Failed",
+                f"Could not open {file_path.name}.\n\n"
+                f"Reason: {advice.reason}\n\n"
+                f"Next steps: {advice.suggestion}",
+            )
             logger.error("Failed to load audio file: %s", e, exc_info=e)
 
     def _collect_project_data(self) -> ProjectData:
@@ -1669,6 +1676,16 @@ class MainWindow(QMainWindow):
 
         if self._detection_manager.is_processing():
             QMessageBox.warning(self, "Processing", "Detection is already in progress.")
+            return
+
+        validation_errors = self._settings_panel.get_validation_errors()
+        if validation_errors:
+            QMessageBox.warning(
+                self,
+                "Invalid Settings",
+                "Please correct the following before running detection:\n\n"
+                + "\n".join(error.message for error in validation_errors),
+            )
             return
 
         # Update pipeline wrapper settings

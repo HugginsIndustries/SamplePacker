@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from spectrosampler.audio_io import extract_sample
+from spectrosampler.audio_io import FFmpegError, describe_audio_load_error, extract_sample
 
 
 def test_extract_sample_duration_bounds(tmp_path: Path):
@@ -20,3 +20,18 @@ def test_extract_sample_duration_bounds(tmp_path: Path):
     assert osr == sr
     got = len(data) / sr
     assert abs(got - 1.5) <= 0.05
+
+
+def test_describe_audio_load_error_handles_missing_file():
+    advice = describe_audio_load_error(
+        Path("missing.wav"), FileNotFoundError(2, "No such file or directory", "missing.wav")
+    )
+    assert "could not be found" in advice.reason.lower()
+    assert "verify" in advice.suggestion.lower()
+
+
+def test_describe_audio_load_error_handles_invalid_data():
+    error = FFmpegError("ffprobe failed: Invalid data found when processing input")
+    advice = describe_audio_load_error(Path("broken.wav"), error)
+    assert "unsupported" in advice.reason.lower() or "corrupted" in advice.reason.lower()
+    assert "convert" in advice.suggestion.lower()

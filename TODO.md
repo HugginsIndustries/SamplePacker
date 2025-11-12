@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 31 items, P2: 20 items_
+_Summary: P0: 0 items, P1: 29 items, P2: 20 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -49,9 +49,6 @@ _Summary: P0: 0 items, P1: 31 items, P2: 20 items_
   - Acceptance: When enabled, playback advances on end-of-media.
 
 ### Error Handling & Validation
-- [ ] [P1] Improve audio loading failure messages
-  - Validate file existence/format/corruption early; replace generic exceptions with specific messages.
-  - Acceptance: File open failure dialogs name the cause and suggest next steps.
 - [ ] [P1] Improve FFmpeg subprocess failure handling
   - Keep `FFmpegError` but provide actionable remediation in UI; validate args before run.
   - Acceptance: Export/cut failures surface a dialog with failing command summary and suggestions.
@@ -60,9 +57,7 @@ _Summary: P0: 0 items, P1: 31 items, P2: 20 items_
   - Acceptance: Warning dialog includes “Try alternate resample” that re-runs analysis.
 
 ### Code Quality & Robustness
-- [ ] [P1] Add input validation for settings ranges
-  - Validate durations, paddings, thresholds, etc.; disable invalid UI inputs or surface validation messages.
-  - Acceptance: Impossible values cannot be entered or are rejected with clear guidance.
+- No items currently planned
 
 ### Processing Pipeline
 - [ ] [P1] Build resilient batch processing runner (from `spectrosampler/pipeline.py:Pipeline.process`)

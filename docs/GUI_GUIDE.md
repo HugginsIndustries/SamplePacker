@@ -69,6 +69,7 @@ Your choice is saved in user settings and stored with the current project, so re
 1. Drag-and-drop a file or use **File → Open Audio File** (`Ctrl+Shift+O`).
 2. Supported formats: WAV, FLAC, MP3, M4A, AAC (FFmpeg handles decoding).
 3. The status bar confirms sample rate, channels, and duration.
+4. If loading fails, the dialog highlights the root cause (missing file, permissions, unsupported codec, or missing FFmpeg) and suggests the next step—follow the guidance or convert the file to WAV/FLAC before retrying.
 
 ### 3.2 Choosing a Detector
 
@@ -90,6 +91,7 @@ Adjust the **Threshold** slider to refine sensitivity. Lower values detect more 
 - **Max samples** – Cap the total number of detections (1–10,000) so exported filenames stay aligned with the 4-digit sample index.
 - **Sample spread** – Keep detections evenly spaced (strict or closest).
 - **Overlap Resolution** – Decide how to handle duplicates/overlaps when re-running detection; pick defaults and optionally remember them.
+> The detection header shows a red validation banner and disables the **Detect Samples** button whenever settings conflict (for example, a minimum duration greater than the maximum or a high-pass frequency above the low-pass). Fix the highlighted values and the button re-enables automatically.
 
 ### 3.4 Audio Processing & Resources
 
