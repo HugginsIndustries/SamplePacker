@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest
 from PySide6.QtWidgets import QApplication
 
 from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.spectrogram_widget import SpectrogramWidget
+
+pytestmark = [
+    pytest.mark.filterwarnings("ignore:Attempting to set identical low and high xlims"),
+]
 
 
 def _ensure_qapp() -> QApplication:

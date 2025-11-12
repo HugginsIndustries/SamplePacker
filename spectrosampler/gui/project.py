@@ -3,7 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -200,7 +200,7 @@ def save_project(project_data: ProjectData, path: Path) -> None:
         ValueError: If project data is invalid.
     """
     # Update modified timestamp
-    project_data.modified = datetime.utcnow().isoformat() + "Z"
+    project_data.modified = datetime.now(UTC).isoformat()
 
     # Convert ProjectData to dictionary
     data_dict = {
