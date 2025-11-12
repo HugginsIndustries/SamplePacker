@@ -63,6 +63,8 @@ def test_detection_settings_round_trip(tmp_path, monkeypatch):
         max_samples=512,
         sample_spread=False,
         sample_spread_mode="closest",
+        show_overlap_dialog=False,
+        overlap_default_behavior="keep_all",
     )
     manager.set_detection_settings(original)
 
@@ -76,6 +78,41 @@ def test_detection_settings_round_trip(tmp_path, monkeypatch):
     assert loaded.max_samples == 512
     assert loaded.sample_spread is False
     assert loaded.sample_spread_mode == "closest"
+    assert loaded.show_overlap_dialog is False
+    assert loaded.overlap_default_behavior == "keep_all"
+
+
+def test_project_round_trip_persists_overlap_preferences(tmp_path):
+    """Project serialization should include overlap dialog preferences."""
+    from spectrosampler.gui.project import ProjectData, UIState, load_project, save_project
+
+    project_path = tmp_path / "project.ssproj"
+    settings = ProcessingSettings(
+        show_overlap_dialog=False,
+        overlap_default_behavior="discard_overlaps",
+        mode="voice",
+    )
+    project = ProjectData(
+        audio_path=str(tmp_path / "dummy.wav"),
+        detection_settings=settings.to_dict(),
+        ui_state=UIState(),
+    )
+    project.ui_state.editor_splitter_sizes = [640, 120]
+    project.ui_state.player_splitter_sizes = [0, 620]
+    project.ui_state.main_splitter_sizes = [800, 0]
+    project.ui_state.timeline_splitter_sizes = [320, 1024]
+    project.ui_state.player_visible = False
+    project.ui_state.info_table_visible = False
+    save_project(project, project_path)
+    loaded = load_project(project_path)
+    assert loaded.detection_settings["show_overlap_dialog"] is False
+    assert loaded.detection_settings["overlap_default_behavior"] == "discard_overlaps"
+    assert loaded.ui_state.editor_splitter_sizes == [640, 120]
+    assert loaded.ui_state.player_splitter_sizes == [0, 620]
+    assert loaded.ui_state.main_splitter_sizes == [800, 0]
+    assert loaded.ui_state.timeline_splitter_sizes == [320, 1024]
+    assert loaded.ui_state.player_visible is False
+    assert loaded.ui_state.info_table_visible is False
 
 
 def test_export_settings_round_trip(tmp_path, monkeypatch):

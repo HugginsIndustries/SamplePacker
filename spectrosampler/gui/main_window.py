@@ -176,6 +176,7 @@ class MainWindow(QMainWindow):
 
         # Create splitter for resizable panels
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._timeline_splitter = splitter
 
         # Settings panel (left)
         self._settings_panel = DetectionSettingsPanel()
@@ -275,6 +276,7 @@ class MainWindow(QMainWindow):
         editor_splitter.setStretchFactor(1, 0)
         editor_splitter.setCollapsible(0, False)
         editor_splitter.setCollapsible(1, True)
+        self._editor_splitter = editor_splitter
 
         splitter.addWidget(editor_splitter)
         splitter.setStretchFactor(1, 1)
@@ -1054,6 +1056,16 @@ class MainWindow(QMainWindow):
             view_start=self._spectrogram_widget._start_time,
             view_end=self._spectrogram_widget._end_time,
             zoom_level=self._spectrogram_widget._zoom_level,
+            editor_splitter_sizes=(
+                list(self._editor_splitter.sizes()) if hasattr(self, "_editor_splitter") else []
+            ),
+            player_splitter_sizes=list(self._player_spectro_splitter.sizes()),
+            main_splitter_sizes=list(self._main_splitter.sizes()),
+            timeline_splitter_sizes=(
+                list(self._timeline_splitter.sizes()) if hasattr(self, "_timeline_splitter") else []
+            ),
+            player_visible=self._sample_player.isVisible(),
+            info_table_visible=self._sample_table_view.isVisible(),
         )
 
         # Create project data
@@ -1234,6 +1246,69 @@ class MainWindow(QMainWindow):
                 # Restore zoom level
                 if hasattr(data.ui_state, "zoom_level"):
                     self._spectrogram_widget.set_zoom_level(data.ui_state.zoom_level)
+
+                # Restore splitter layouts
+                try:
+                    editor_sizes = list(getattr(data.ui_state, "editor_splitter_sizes", []) or [])
+                    if editor_sizes:
+                        self._editor_splitter.setSizes([max(0, int(s)) for s in editor_sizes])
+                except (ValueError, TypeError, AttributeError) as exc:
+                    logger.debug("Failed to restore editor splitter sizes: %s", exc, exc_info=exc)
+
+                try:
+                    timeline_sizes = list(
+                        getattr(data.ui_state, "timeline_splitter_sizes", []) or []
+                    )
+                    if timeline_sizes and hasattr(self, "_timeline_splitter"):
+                        self._timeline_splitter.setSizes([max(0, int(s)) for s in timeline_sizes])
+                except (ValueError, TypeError, AttributeError) as exc:
+                    logger.debug("Failed to restore timeline splitter sizes: %s", exc, exc_info=exc)
+
+                try:
+                    main_sizes = list(getattr(data.ui_state, "main_splitter_sizes", []) or [])
+                    if main_sizes:
+                        int_sizes = [max(0, int(s)) for s in main_sizes]
+                        self._main_splitter.setSizes(int_sizes)
+                        if len(int_sizes) > 1 and int_sizes[1] > 0:
+                            self._info_table_initial_size = int_sizes[1]
+                        if hasattr(self, "_hide_info_action"):
+                            self._hide_info_action.setChecked(
+                                int_sizes[1] == 0 if len(int_sizes) > 1 else False
+                            )
+                except (ValueError, TypeError, AttributeError) as exc:
+                    logger.debug("Failed to restore main splitter sizes: %s", exc, exc_info=exc)
+
+                try:
+                    player_sizes = list(getattr(data.ui_state, "player_splitter_sizes", []) or [])
+                    if player_sizes:
+                        int_sizes = [max(0, int(s)) for s in player_sizes]
+                        self._player_spectro_splitter.setSizes(int_sizes)
+                        if int_sizes and int_sizes[0] > 0:
+                            self._player_initial_size = int_sizes[0]
+                        if hasattr(self, "_hide_player_action"):
+                            self._hide_player_action.setChecked(
+                                int_sizes[0] == 0 if int_sizes else False
+                            )
+                except (ValueError, TypeError, AttributeError) as exc:
+                    logger.debug("Failed to restore player splitter sizes: %s", exc, exc_info=exc)
+
+                # Restore panel visibility flags
+                info_visible = getattr(data.ui_state, "info_table_visible", True)
+                player_visible = getattr(data.ui_state, "player_visible", True)
+                self._sample_table_view.setVisible(bool(info_visible))
+                self._sample_player.setVisible(bool(player_visible))
+
+                if hasattr(self, "_hide_info_action"):
+                    # Keep action in sync with actual visibility/sizes
+                    sizes = self._main_splitter.sizes()
+                    self._hide_info_action.setChecked(
+                        (sizes[1] if len(sizes) > 1 else 0) == 0 or not bool(info_visible)
+                    )
+                if hasattr(self, "_hide_player_action"):
+                    sizes = self._player_spectro_splitter.sizes()
+                    self._hide_player_action.setChecked(
+                        (sizes[0] if sizes else 0) == 0 or not bool(player_visible)
+                    )
             except (AttributeError, ValueError, TypeError) as e:
                 logger.warning("Failed to restore UI state: %s", e, exc_info=e)
 
@@ -1516,7 +1591,20 @@ class MainWindow(QMainWindow):
         if geometry.get("editorSplitterSizes"):
             sizes = geometry["editorSplitterSizes"]
             if isinstance(sizes, list) and len(sizes) >= 2:
-                pass
+                try:
+                    sizes_int = [int(s) if s else 0 for s in sizes]
+                    self._editor_splitter.setSizes(sizes_int)
+                except (ValueError, TypeError):
+                    pass
+
+        if geometry.get("timelineSplitterSizes"):
+            sizes = geometry["timelineSplitterSizes"]
+            if isinstance(sizes, list) and len(sizes) >= 2:
+                try:
+                    sizes_int = [int(s) if s else 0 for s in sizes]
+                    self._timeline_splitter.setSizes(sizes_int)
+                except (ValueError, TypeError):
+                    pass
 
         if geometry.get("playerSplitterSizes"):
             sizes = geometry["playerSplitterSizes"]
@@ -1546,7 +1634,13 @@ class MainWindow(QMainWindow):
 
         # Save splitter sizes
         geometry["mainSplitterSizes"] = self._main_splitter.sizes()
+        geometry["editorSplitterSizes"] = (
+            self._editor_splitter.sizes() if hasattr(self, "_editor_splitter") else []
+        )
         geometry["playerSplitterSizes"] = self._player_spectro_splitter.sizes()
+        geometry["timelineSplitterSizes"] = (
+            self._timeline_splitter.sizes() if hasattr(self, "_timeline_splitter") else []
+        )
 
         # Save panel visibility
         geometry["infoTableVisible"] = self._sample_table_view.isVisible()
@@ -1770,6 +1864,28 @@ class MainWindow(QMainWindow):
                         default_behavior = "discard_duplicates"
                         show_dialog = True
 
+                    pipeline_settings = getattr(self._pipeline_wrapper, "settings", None)
+                    if pipeline_settings is not None:
+                        try:
+                            candidate = pipeline_settings.overlap_default_behavior
+                            if isinstance(candidate, str):
+                                default_behavior = candidate
+                        except AttributeError:
+                            pass
+                        try:
+                            show_candidate = pipeline_settings.show_overlap_dialog
+                            if show_candidate is not None:
+                                show_dialog = bool(show_candidate)
+                        except AttributeError:
+                            pass
+
+                    if default_behavior not in {
+                        "discard_duplicates",
+                        "discard_overlaps",
+                        "keep_all",
+                    }:
+                        default_behavior = "discard_duplicates"
+
                     if show_dialog:
                         dlg = OverlapResolutionDialog(
                             overlaps_count=len(report.overlaps),
@@ -1827,6 +1943,16 @@ class MainWindow(QMainWindow):
                             self._settings_manager.set_show_overlap_dialog(False)
                             self._settings_manager.set_overlap_default_behavior(
                                 behavior or "discard_duplicates"
+                            )
+                            if pipeline_settings is not None:
+                                pipeline_settings.show_overlap_dialog = False
+                                pipeline_settings.overlap_default_behavior = (
+                                    behavior or "discard_duplicates"
+                                )
+                            self._settings_panel.set_overlap_preferences(
+                                False,
+                                behavior or "discard_duplicates",
+                                persist_manager=False,
                             )
                         except (RuntimeError, ValueError) as exc:
                             logger.debug(

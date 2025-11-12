@@ -13,7 +13,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 - **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (play, disable, edit name, center/fill view, delete), and lockable grid snapping (time or musical bars).
 - **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, live playback indicator on the spectrogram, and sample table shortcuts (center/fill/play/delete).
 - **Export Pipeline** – Per-project format, sample rate, bit depth, channel configuration, and padding. Export selected samples without re-encoding by default (WAV/FLAC supported out of the box).
-- **Session Safety** – Project files capture every setting, autosave keeps rotating backups, and overlap resolution dialog protects existing edits when re-running detection.
+- **Session Safety** – Project files capture every setting (including overlap resolution defaults and editor layout), autosave keeps rotating backups, and the overlap dialog protects existing edits when re-running detection.
 
 > Looking for GUI usage details and walkthrough screenshots? See `docs/GUI_GUIDE.md`.
 
@@ -94,7 +94,8 @@ spectrosampler-gui --version          Show version and exit
 ### Persistence & Safety
 - Autosave is on by default (Settings → Auto-save). Interval is configurable; autosaves live in the system temp directory.
 - Closing with unsaved edits prompts to save/discard.
-- Detection and export settings persist between sessions and reload when you reopen a project or restart the app, so your thresholds and export presets follow you automatically.
+- Detection, export, and overlap-resolution defaults persist between sessions and reload when you reopen a project or restart the app, so your thresholds and conflict handling follow you automatically.
+- Splitter layouts (settings vs. editor, player vs. spectrogram, info table) restore exactly as saved, so collapsed panels stay collapsed when a project reopens.
 - Recent projects/audio lists are available in the File menu and welcome screen; you can clear them via Settings → Clear Recent Projects/Audio.
 
 ### Running Detection
@@ -177,7 +178,7 @@ Project saves capture:
 - Detection settings, timing guards, filter values
 - Sample metadata (start/end/duration, detector name, enabled flag, per-sample Name)
 - Export configuration (format, rate, padding, channels, bit depth)
-- Grid settings and UI layout (splitter sizes, panels hidden/shown)
+- Grid settings, overlap dialog defaults, and UI layout (splitter sizes, panels hidden/shown)
 - Recent playback state (current view, zoom)
 - Preferred theme mode is stored per user (System/Dark/Light)
 
@@ -191,7 +192,7 @@ Files are JSON; you can inspect or version-control them. Autosaves keep the last
 - **Audio file won’t open** – The error dialog spells out the cause (missing file, unsupported codec, permissions, or FFmpeg availability) and suggested fixes; follow the guidance or convert the file to WAV/FLAC.
 - **`webrtcvad` build errors (Windows)** – Install Visual Studio Build Tools or skip VAD.
 - **GUI feels sluggish on big files** – Lower refresh rate (View → Limit UI Refresh Rate) or disable disabled-sample display.
-- **Overlap resolution keeps popping up** – Set a default choice and tick “Remember my choice,” or adjust detection thresholds to reduce duplicates.
+- **Overlap resolution keeps popping up** – Set a default choice, tick “Remember my choice” (it saves inside the project), or adjust detection thresholds to reduce duplicates.
 - **Audio missing when reopening project** – The `.ssproj` stores the file path only; relink if the audio moved.
 
 ---

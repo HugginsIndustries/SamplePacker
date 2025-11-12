@@ -57,6 +57,8 @@ class ProcessingSettings:
         "create_subfolders",
         "resolve_overlaps",
         "overlap_iou",
+        "show_overlap_dialog",
+        "overlap_default_behavior",
         "subfolder_template",
         "max_workers",
     )
@@ -128,6 +130,17 @@ class ProcessingSettings:
             "subfolder_template",
             "{basename}__{mode}__pre{pre}ms_post{post}ms_thr{thr}",
         )
+
+        # Overlap dialog preferences (mirrored into projects for persistence)
+        show_overlap = kwargs.get("show_overlap_dialog", True)
+        self.show_overlap_dialog: bool = bool(show_overlap) if show_overlap is not None else True
+        behavior = kwargs.get("overlap_default_behavior", "discard_duplicates")
+        if not isinstance(behavior, str):
+            behavior = "discard_duplicates"
+        behavior = behavior.strip().lower()
+        if behavior not in {"discard_duplicates", "discard_overlaps", "keep_all"}:
+            behavior = "discard_duplicates"
+        self.overlap_default_behavior: str = behavior
 
         # Internal/default configuration
         self.max_workers: int = kwargs.get("max_workers", 0)

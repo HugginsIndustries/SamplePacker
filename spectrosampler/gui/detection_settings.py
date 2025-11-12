@@ -31,6 +31,13 @@ class DetectionSettingsPanel(QWidget):
     settings_changed = Signal()  # Emitted when settings change
     detect_samples_requested = Signal()  # Emitted when detection is requested
 
+    _BEHAVIOR_TO_LABEL = {
+        "discard_overlaps": "Discard Overlaps",
+        "discard_duplicates": "Discard Duplicates",
+        "keep_all": "Keep All",
+    }
+    _LABEL_TO_BEHAVIOR = {label: key for key, label in _BEHAVIOR_TO_LABEL.items()}
+
     def __init__(self, parent: QWidget | None = None):
         """Initialize detection settings panel.
 
@@ -42,6 +49,19 @@ class DetectionSettingsPanel(QWidget):
         # Create settings
         self._settings = ProcessingSettings()
         self._settings_manager = SettingsManager()
+        try:
+            self._settings.show_overlap_dialog = self._settings_manager.get_show_overlap_dialog()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.debug("Failed to restore overlap dialog setting: %s", exc, exc_info=exc)
+            self._settings.show_overlap_dialog = True
+        try:
+            behavior_pref = self._settings_manager.get_overlap_default_behavior()
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.debug("Failed to restore overlap behavior setting: %s", exc, exc_info=exc)
+            behavior_pref = "discard_duplicates"
+        self._settings.overlap_default_behavior = (
+            behavior_pref if behavior_pref in self._BEHAVIOR_TO_LABEL else "discard_duplicates"
+        )
         try:
             # Restore the persisted max-sample cap so the UI starts with the last chosen value.
             self._settings.max_samples = self._settings_manager.get_detection_max_samples(
@@ -150,70 +170,34 @@ class DetectionSettingsPanel(QWidget):
 
         # Show overlap dialog checkbox
         self._show_overlap_dialog_checkbox = QCheckBox()
-        try:
-            self._show_overlap_dialog_checkbox.setChecked(
-                self._settings_manager.get_show_overlap_dialog()
-            )
-        except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore overlap dialog preference, defaulting to enabled: %s",
-                exc,
-                exc_info=exc,
-            )
-            self._show_overlap_dialog_checkbox.setChecked(True)
 
         def _on_show_overlap_changed(state: int) -> None:
-            try:
-                self._settings_manager.set_show_overlap_dialog(
-                    self._show_overlap_dialog_checkbox.isChecked()
-                )
-            finally:
-                self.settings_changed.emit()
+            self.set_overlap_preferences(
+                self._show_overlap_dialog_checkbox.isChecked(),
+                self._settings.overlap_default_behavior,
+            )
 
         self._show_overlap_dialog_checkbox.stateChanged.connect(_on_show_overlap_changed)
         layout.addRow("Show overlap dialog:", self._show_overlap_dialog_checkbox)
 
         # Default behavior dropdown
         self._overlap_behavior_combo = QComboBox()
-        self._overlap_behavior_combo.addItems(
-            [
-                "Discard Overlaps",
-                "Discard Duplicates",
-                "Keep All",
-            ]
-        )
-        try:
-            behavior = self._settings_manager.get_overlap_default_behavior()
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            logger.warning(
-                "Failed to restore overlap behavior preference, using default: %s",
-                exc,
-                exc_info=exc,
-            )
-            behavior = "discard_duplicates"
-
-        display_map = {
-            "discard_overlaps": "Discard Overlaps",
-            "discard_duplicates": "Discard Duplicates",
-            "keep_all": "Keep All",
-        }
-        self._overlap_behavior_combo.setCurrentText(display_map.get(behavior, "Discard Duplicates"))
+        self._overlap_behavior_combo.addItems(self._BEHAVIOR_TO_LABEL.values())
 
         def _on_behavior_changed(text: str) -> None:
-            inv_map = {
-                "Discard Overlaps": "discard_overlaps",
-                "Discard Duplicates": "discard_duplicates",
-                "Keep All": "keep_all",
-            }
-            try:
-                self._settings_manager.set_overlap_default_behavior(
-                    inv_map.get(text, "discard_duplicates")
-                )
-            finally:
-                self.settings_changed.emit()
+            key = self._LABEL_TO_BEHAVIOR.get(text, "discard_duplicates")
+            self.set_overlap_preferences(self._settings.show_overlap_dialog, key)
 
         self._overlap_behavior_combo.currentTextChanged.connect(_on_behavior_changed)
         layout.addRow("Default behavior:", self._overlap_behavior_combo)
+
+        # Apply initial preferences without re-emitting signals or persisting redundantly.
+        self.set_overlap_preferences(
+            self._settings.show_overlap_dialog,
+            self._settings.overlap_default_behavior,
+            persist_manager=False,
+            emit_signal=False,
+        )
 
         group.setLayout(layout)
         return group
@@ -568,6 +552,14 @@ class DetectionSettingsPanel(QWidget):
         _set_slider_pair(self._lp_slider, self._settings.lp or 0.0)
         _set_slider_pair(self._nr_slider, self._settings.nr)
 
+        # Overlap dialog preferences
+        self.set_overlap_preferences(
+            self._settings.show_overlap_dialog,
+            self._settings.overlap_default_behavior,
+            persist_manager=True,
+            emit_signal=False,
+        )
+
         self._refresh_validation_state()
         if emit_signal:
             self.settings_changed.emit()
@@ -600,6 +592,44 @@ class DetectionSettingsPanel(QWidget):
                 self._settings_manager.set_detection_max_samples(clamped)
             except (TypeError, ValueError, RuntimeError) as exc:
                 logger.debug("Unable to persist max samples %s: %s", clamped, exc, exc_info=exc)
+
+    def set_overlap_preferences(
+        self,
+        show_dialog: bool,
+        behavior_key: str,
+        *,
+        persist_manager: bool = True,
+        emit_signal: bool = True,
+    ) -> None:
+        """Update overlap dialog visibility and default behavior preferences."""
+        normalized_key = (
+            behavior_key if behavior_key in self._BEHAVIOR_TO_LABEL else "discard_duplicates"
+        )
+        self._settings.show_overlap_dialog = bool(show_dialog)
+        self._settings.overlap_default_behavior = normalized_key
+
+        if hasattr(self, "_show_overlap_dialog_checkbox"):
+            self._show_overlap_dialog_checkbox.blockSignals(True)
+            self._show_overlap_dialog_checkbox.setChecked(self._settings.show_overlap_dialog)
+            self._show_overlap_dialog_checkbox.blockSignals(False)
+        if hasattr(self, "_overlap_behavior_combo"):
+            desired_label = self._BEHAVIOR_TO_LABEL[normalized_key]
+            self._overlap_behavior_combo.blockSignals(True)
+            self._overlap_behavior_combo.setCurrentText(desired_label)
+            self._overlap_behavior_combo.blockSignals(False)
+
+        if persist_manager:
+            try:
+                self._settings_manager.set_show_overlap_dialog(self._settings.show_overlap_dialog)
+            except (TypeError, ValueError, RuntimeError) as exc:
+                logger.debug("Unable to persist overlap dialog preference: %s", exc, exc_info=exc)
+            try:
+                self._settings_manager.set_overlap_default_behavior(normalized_key)
+            except (TypeError, ValueError, RuntimeError) as exc:
+                logger.debug("Unable to persist overlap default behavior: %s", exc, exc_info=exc)
+
+        if emit_signal:
+            self.settings_changed.emit()
 
     def _refresh_validation_state(self) -> None:
         """Update UI elements based on current validation errors."""

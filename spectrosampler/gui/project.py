@@ -25,6 +25,12 @@ class UIState:
     view_start: float = 0.0
     view_end: float = 60.0
     zoom_level: float = 1.0
+    editor_splitter_sizes: list[int] = field(default_factory=list)
+    player_splitter_sizes: list[int] = field(default_factory=list)
+    main_splitter_sizes: list[int] = field(default_factory=list)
+    timeline_splitter_sizes: list[int] = field(default_factory=list)
+    player_visible: bool = True
+    info_table_visible: bool = True
 
 
 @dataclass
@@ -168,6 +174,20 @@ def _dict_to_grid_settings(data: dict[str, Any]) -> GridSettings:
     )
 
 
+def _coerce_splitter_sizes(raw: Any) -> list[int]:
+    """Convert persisted splitter sizes into a clean integer list."""
+    if not isinstance(raw, list):
+        return []
+    result: list[int] = []
+    for item in raw:
+        try:
+            value = int(item)
+        except (TypeError, ValueError):
+            continue
+        result.append(max(0, value))
+    return result
+
+
 def save_project(project_data: ProjectData, path: Path) -> None:
     """Save project data to file.
 
@@ -197,6 +217,12 @@ def save_project(project_data: ProjectData, path: Path) -> None:
             "view_start": project_data.ui_state.view_start,
             "view_end": project_data.ui_state.view_end,
             "zoom_level": project_data.ui_state.zoom_level,
+            "editor_splitter_sizes": project_data.ui_state.editor_splitter_sizes,
+            "player_splitter_sizes": project_data.ui_state.player_splitter_sizes,
+            "main_splitter_sizes": project_data.ui_state.main_splitter_sizes,
+            "timeline_splitter_sizes": project_data.ui_state.timeline_splitter_sizes,
+            "player_visible": project_data.ui_state.player_visible,
+            "info_table_visible": project_data.ui_state.info_table_visible,
         },
     }
 
@@ -255,6 +281,14 @@ def load_project(path: Path) -> ProjectData:
         view_start=float(ui_state_data.get("view_start", 0.0)),
         view_end=float(ui_state_data.get("view_end", 60.0)),
         zoom_level=float(ui_state_data.get("zoom_level", 1.0)),
+        editor_splitter_sizes=_coerce_splitter_sizes(ui_state_data.get("editor_splitter_sizes")),
+        player_splitter_sizes=_coerce_splitter_sizes(ui_state_data.get("player_splitter_sizes")),
+        main_splitter_sizes=_coerce_splitter_sizes(ui_state_data.get("main_splitter_sizes")),
+        timeline_splitter_sizes=_coerce_splitter_sizes(
+            ui_state_data.get("timeline_splitter_sizes")
+        ),
+        player_visible=bool(ui_state_data.get("player_visible", True)),
+        info_table_visible=bool(ui_state_data.get("info_table_visible", True)),
     )
 
     project_data = ProjectData(

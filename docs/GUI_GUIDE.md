@@ -33,7 +33,7 @@ Autosave is enabled by default. If SpectroSampler detects an autosave newer than
 | **Navigator Overview (below spectrogram)** | Miniature spectrogram with a draggable viewport rectangle for quick jumps. |
 | **Sample Table (bottom)** | Per-sample enable checkbox, optional Name text field (feeds export filenames), start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
 
-All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram.
+All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram. SpectroSampler saves these positions with the project so the layout returns exactly as you left it.
 
 > Screenshot placeholder: `docs/images/main-window-overview.png`
 
@@ -90,7 +90,7 @@ Adjust the **Threshold** slider to refine sensitivity. Lower values detect more 
 - **Min/Max duration** – Clamp sample length.
 - **Max samples** – Cap the total number of detections (1–10,000) so exported filenames stay aligned with the 4-digit sample index.
 - **Sample spread** – Keep detections evenly spaced (strict or closest).
-- **Overlap Resolution** – Decide how to handle duplicates/overlaps when re-running detection; pick defaults and optionally remember them.
+- **Overlap Resolution** – Decide how to handle duplicates/overlaps when re-running detection; pick defaults and optionally remember them (the choice is written into the project so reopening restores it automatically).
 > The detection header shows a red validation banner and disables the **Detect Samples** button whenever settings conflict (for example, a minimum duration greater than the maximum or a high-pass frequency above the low-pass). Fix the highlighted values and the button re-enables automatically.
 
 ### 3.4 Audio Processing & Resources
@@ -196,7 +196,8 @@ When ready, choose **File → Export Samples** (`Ctrl+E`). Only enabled (checked
 - **Manual Save** – `Ctrl+S` writes the current `.ssproj`. `Ctrl+Shift+S` prompts for a new filename.
 - **Unsaved Changes Prompt** – Closing the window or quitting the app with modifications opens a Save/Discard/Cancel dialog.
 - **Recent Lists** – Clear stale entries from Settings → Clear Recent Projects/Audio.
-- **Detection & Export Defaults** – Thresholds, timing guards, and export format/padding choices persist per-user and reload with each project, so tweaking them once saves the preference for future sessions.
+- **Detection & Export Defaults** – Thresholds, timing guards, overlap behavior, and export format/padding choices persist per-user and reload with each project, so tweaking them once saves the preference for future sessions.
+- **Layout Preservation** – Splitter positions for the settings/editor, player, navigator, and info table are stored in the project file; collapsing a panel keeps it collapsed on reopen.
 
 Project files are plain JSON and include audio paths, detection/export settings, grid config, and window layout. If the referenced audio is missing, SpectroSampler prompts to relink it when opening the project.
 

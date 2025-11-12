@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 24 items, P2: 20 items_
+_Summary: P0: 0 items, P1: 23 items, P2: 19 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -92,10 +92,6 @@ _Summary: P0: 0 items, P1: 24 items, P2: 20 items_
 - [ ] [P1] Add multi-select in sample table
   - Ctrl/Shift selection enabling bulk operations.
   - Acceptance: Bulk delete/export/rename across selected rows.
-- [ ] [P2] Restore editor splitter layout on load (from `spectrosampler/gui/main_window.py:_restore_window_geometry`)
-  - Acceptance:
-    - Saving and reopening a project restores the inner editor splitter sizes exactly as previously stored.
-    - Automated GUI test or manual checklist verifies collapse/expand state survives restart.
 - [ ] [P2] Add zoom to fit selection
   - Shortcut/button to fit selected samples in view.
   - Acceptance: View window adjusts to encompass selected segments.
@@ -130,11 +126,6 @@ _Summary: P0: 0 items, P1: 24 items, P2: 20 items_
 - [ ] [P2] Add customizable keyboard shortcuts
   - Remapping UI with persistence.
   - Acceptance: Changes survive restart; conflicts are prevented.
-- [ ] [P1] Persist overlap handling defaults in project settings
-  - Ensure the settings panel writes dialog visibility and default behavior into `ProcessingSettings` so projects carry the preference.
-  - Acceptance:
-    - Saving and reopening a project restores overlap dialog visibility and default behavior.
-    - Overlap resolution uses the restored values without re-prompting when the dialog is disabled.
 
 ### Workflow Improvements
 

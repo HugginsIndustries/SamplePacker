@@ -482,6 +482,15 @@ class SettingsManager:
             else:
                 geometry["playerSplitterSizes"] = player_splitter
 
+        timeline_splitter = self._settings.value("timelineSplitterSizes", None)
+        if timeline_splitter is not None:
+            if isinstance(timeline_splitter, list):
+                geometry["timelineSplitterSizes"] = [
+                    int(s) if s is not None else 0 for s in timeline_splitter
+                ]
+            else:
+                geometry["timelineSplitterSizes"] = timeline_splitter
+
         geometry["infoTableVisible"] = self._settings.value("infoTableVisible", True, type=bool)
         geometry["playerVisible"] = self._settings.value("playerVisible", True, type=bool)
         return geometry
@@ -502,6 +511,8 @@ class SettingsManager:
             self._settings.setValue("editorSplitterSizes", geometry["editorSplitterSizes"])
         if "playerSplitterSizes" in geometry:
             self._settings.setValue("playerSplitterSizes", geometry["playerSplitterSizes"])
+        if "timelineSplitterSizes" in geometry:
+            self._settings.setValue("timelineSplitterSizes", geometry["timelineSplitterSizes"])
         if "infoTableVisible" in geometry:
             self._settings.setValue("infoTableVisible", geometry["infoTableVisible"])
         if "playerVisible" in geometry:
