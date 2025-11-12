@@ -112,6 +112,11 @@ class SpectrogramWidget(QWidget):
         self._original_segment_start: float | None = None  # For ESC cancellation
         self._original_segment_end: float | None = None  # For ESC cancellation
 
+        # Playback indicator state
+        self._playback_time: float | None = None
+        self._playback_segment_index: int | None = None
+        self._playback_paused: bool = False
+
         # Drag start timer for double-click prevention
         self._drag_start_timer: QTimer | None = None
         self._min_hold_duration_ms = 150  # Minimum hold duration before drag starts
@@ -166,6 +171,24 @@ class SpectrogramWidget(QWidget):
             return 0.0, 0.0, 0.0, 1.0
         rgb = cast("tuple[float, float, float, float]", color.getRgbF())
         return rgb
+
+    @staticmethod
+    def _color_to_hex(color: QColor | str, default: str = "#FFFFFF") -> str:
+        """Convert a QColor or color string to a hex string."""
+        if isinstance(color, QColor):
+            return color.name()
+        if isinstance(color, str) and color:
+            return color
+        return default
+
+    @staticmethod
+    def _float_close(value_a: float | None, value_b: float | None, *, eps: float = 1e-4) -> bool:
+        """Return True when both floats are either None or within eps."""
+        if value_a is None and value_b is None:
+            return True
+        if value_a is None or value_b is None:
+            return False
+        return abs(value_a - value_b) <= eps
 
     def _apply_theme_to_axes(self) -> None:
         """Apply current theme colors to matplotlib axes."""
@@ -240,10 +263,50 @@ class SpectrogramWidget(QWidget):
         """
         self._segments = segments
         self._selected_index = None
+        if self._playback_segment_index is not None:
+            if not (0 <= self._playback_segment_index < len(self._segments)):
+                self._playback_segment_index = None
+                self._playback_time = None
+                self._playback_paused = False
         if update_tiles:
             self._update_display()
         else:
             self._update_overlays_only()
+
+    def set_playback_state(
+        self,
+        segment_index: int | None,
+        playback_time: float | None,
+        *,
+        paused: bool = False,
+    ) -> None:
+        """Update playback indicator state and redraw overlays if needed.
+
+        Args:
+            segment_index: Index of the segment currently playing or None to clear.
+            playback_time: Absolute playback time in seconds or None to clear.
+            paused: True if playback is currently paused.
+        """
+        if segment_index is None or playback_time is None:
+            new_index = None
+            new_time = None
+            new_paused = False
+        else:
+            new_index = segment_index
+            new_time = min(self._duration, max(0.0, playback_time))
+            new_paused = paused
+
+        if (
+            self._playback_segment_index == new_index
+            and self._float_close(self._playback_time, new_time)
+            and self._playback_paused == new_paused
+        ):
+            return
+
+        self._playback_segment_index = new_index
+        self._playback_time = new_time
+        self._playback_paused = new_paused
+        self._update_overlays_only()
 
     def set_selected_index(self, index: int | None) -> None:
         """Set selected segment index.
@@ -412,7 +475,7 @@ class SpectrogramWidget(QWidget):
             return
         # Draw overlays (includes segments, grid, preview)
         self._draw_overlays()
-        self._canvas.draw()
+        self._canvas.draw_idle()
 
     def _draw_overlays(self) -> None:
         """Redraw grid, segments, and previews without clearing the spectrogram image."""
@@ -554,6 +617,15 @@ class SpectrogramWidget(QWidget):
                 if i == self._selected_index
                 else (default_edge.name() if isinstance(default_edge, QColor) else "white")
             )
+            line_style = "-"
+            if self._playback_segment_index == i:
+                edge_color = self._color_to_hex(
+                    self._theme_colors.get("selection_border", "#00BCD4"),
+                    default="#00BCD4",
+                )
+                alpha = max(alpha, 0.4)
+                if self._playback_paused:
+                    line_style = "--"
             seg_start = max(seg.start, self._start_time)
             seg_end = min(seg.end, self._end_time)
             seg_width = seg_end - seg_start
@@ -573,6 +645,7 @@ class SpectrogramWidget(QWidget):
                 facecolor=color,
                 edgecolor=edge_color,
                 linewidth=2,
+                linestyle=line_style,
                 zorder=2,
             )
             self._segment_artists.append(span)
@@ -601,6 +674,52 @@ class SpectrogramWidget(QWidget):
                 fontsize=8,
             )
             self._segment_artists.append(txt)
+
+        playback_time = self._playback_time
+        playback_index = self._playback_segment_index
+        if playback_time is not None and playback_index is not None:
+            if self._start_time <= playback_time <= self._end_time:
+                y_min, y_max = self._ax.get_ylim()
+                playback_color_hex = self._color_to_hex(
+                    self._theme_colors.get("selection_border", "#FFCC33"), default="#FFCC33"
+                )
+                line_style = "-" if not self._playback_paused else "--"
+                line_alpha = 0.9 if not self._playback_paused else 0.6
+                ln = self._ax.axvline(
+                    playback_time,
+                    ymin=0.0,
+                    ymax=1.0,
+                    color=playback_color_hex,
+                    linewidth=2.5,
+                    linestyle=line_style,
+                    alpha=line_alpha,
+                    zorder=4,
+                )
+                self._segment_artists.append(ln)
+                marker_alpha = 1.0 if not self._playback_paused else 0.7
+                (marker_top,) = self._ax.plot(
+                    [playback_time],
+                    [y_max],
+                    marker="o",
+                    markersize=6,
+                    color=playback_color_hex,
+                    alpha=marker_alpha,
+                    markeredgecolor="#202020",
+                    markeredgewidth=0.8,
+                    zorder=5,
+                )
+                (marker_bottom,) = self._ax.plot(
+                    [playback_time],
+                    [y_min],
+                    marker="o",
+                    markersize=5,
+                    color=playback_color_hex,
+                    alpha=marker_alpha,
+                    markeredgecolor="#202020",
+                    markeredgewidth=0.8,
+                    zorder=5,
+                )
+                self._segment_artists.extend([marker_top, marker_bottom])
 
         # Preview rectangle for sample creation
         if (

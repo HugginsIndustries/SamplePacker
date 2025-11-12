@@ -11,7 +11,7 @@ SpectroSampler is delivered as a GUI desktop app. Command-line usage is limited 
 - **Guided Workspace** – Welcome screen with recent projects/audio, autosave controls, and persistent window layout.
 - **Detection Engine** – Multiple detectors (auto mix, voice VAD, transient, non-silence energy, spectral interestingness) with per-mode thresholds, merge rules, gap/duration guards, and multi-core processing control (`CPU workers`). Voice VAD pre-filters audio with a configurable 200–4500 Hz band-pass before WebRTC scoring so speech-focused projects stay cleaner.
 - **Editing Surface** – High-resolution spectrogram (0.5×–32× zoom), navigator overview, draggable sample markers, context actions (disable others, center/fill view), and lockable grid snapping (time or musical bars).
-- **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, and sample table shortcuts (center/fill/play/delete).
+- **Playback & Review** – Integrated sample player with looping, scrub bar, next/previous navigation, live playback indicator on the spectrogram, and sample table shortcuts (center/fill/play/delete).
 - **Export Pipeline** – Per-project format, sample rate, bit depth, channel configuration, and padding. Export selected samples without re-encoding by default (WAV/FLAC supported out of the box).
 - **Session Safety** – Project files capture every setting, autosave keeps rotating backups, and overlap resolution dialog protects existing edits when re-running detection.
 
@@ -94,6 +94,7 @@ spectrosampler-gui --version          Show version and exit
 ### Persistence & Safety
 - Autosave is on by default (Settings → Auto-save). Interval is configurable; autosaves live in the system temp directory.
 - Closing with unsaved edits prompts to save/discard.
+- Detection and export settings persist between sessions and reload when you reopen a project or restart the app, so your thresholds and export presets follow you automatically.
 - Recent projects/audio lists are available in the File menu and welcome screen; you can clear them via Settings → Clear Recent Projects/Audio.
 
 ### Running Detection

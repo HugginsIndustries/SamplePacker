@@ -1,11 +1,14 @@
 """Settings manager for persistent application preferences."""
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSettings
+
+from spectrosampler.pipeline_settings import ProcessingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,122 @@ class SettingsManager:
         """Initialize settings manager."""
         # Use QSettings with organization and application name
         self._settings = QSettings("SpectroSampler", "SpectroSampler")
+
+    # ---------------------------------------------------------------------
+    # Internal helpers
+    # ---------------------------------------------------------------------
+
+    def _load_json_dict(self, key: str) -> dict[str, Any]:
+        """Load a JSON-encoded dictionary from QSettings."""
+        raw = self._settings.value(key, "")
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str) and raw:
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError as exc:
+                logger.warning("Failed to decode JSON for %s: %s", key, exc, exc_info=exc)
+        return {}
+
+    def _store_json_dict(self, key: str, payload: dict[str, Any]) -> None:
+        """Persist a dictionary as JSON to QSettings."""
+        try:
+            encoded = json.dumps(payload)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Failed to serialise settings for %s: %s", key, exc, exc_info=exc)
+            encoded = ""
+        self._settings.setValue(key, encoded)
+        self._settings.sync()
+
+    # ---------------------------------------------------------------------
+    # Detection/export settings persistence
+    # ---------------------------------------------------------------------
+
+    def get_detection_settings(self) -> ProcessingSettings | None:
+        """Return persisted detection settings or None when unavailable."""
+        data = self._load_json_dict("detectionSettings")
+        if not data:
+            return None
+        try:
+            return ProcessingSettings.from_dict(data)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Invalid persisted detection settings: %s", exc, exc_info=exc)
+            return None
+
+    def set_detection_settings(self, settings: ProcessingSettings) -> None:
+        """Persist detection settings snapshot."""
+        try:
+            snapshot = settings.to_dict()
+        except AttributeError as exc:
+            logger.warning("Cannot serialise detection settings: %s", exc, exc_info=exc)
+            snapshot = {}
+        self._store_json_dict("detectionSettings", snapshot)
+
+    def get_export_settings(self) -> dict[str, Any]:
+        """Return persisted export settings with defaults."""
+        defaults = {
+            "export_pre_pad_ms": 0.0,
+            "export_post_pad_ms": 0.0,
+            "export_format": "wav",
+            "export_sample_rate": None,
+            "export_bit_depth": None,
+            "export_channels": None,
+        }
+        payload = self._load_json_dict("exportSettings")
+        result: dict[str, Any] = defaults.copy()
+
+        def _as_float(value: Any, fallback: float) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return fallback
+
+        def _as_int_or_none(value: Any) -> int | None:
+            if value is None:
+                return None
+            try:
+                number = int(value)
+                return number if number > 0 else None
+            except (TypeError, ValueError):
+                return None
+
+        result["export_pre_pad_ms"] = _as_float(
+            payload.get("export_pre_pad_ms"), defaults["export_pre_pad_ms"]
+        )
+        result["export_post_pad_ms"] = _as_float(
+            payload.get("export_post_pad_ms"), defaults["export_post_pad_ms"]
+        )
+        format_value = payload.get("export_format", defaults["export_format"])
+        if isinstance(format_value, str) and format_value.lower() in {"wav", "flac"}:
+            result["export_format"] = format_value.lower()
+        result["export_sample_rate"] = _as_int_or_none(payload.get("export_sample_rate"))
+        bit_depth = payload.get("export_bit_depth")
+        if isinstance(bit_depth, str) and bit_depth in {"16", "24", "32f"}:
+            result["export_bit_depth"] = bit_depth
+        elif bit_depth in (None, ""):
+            result["export_bit_depth"] = None
+        channels = payload.get("export_channels")
+        if isinstance(channels, str) and channels in {"mono", "stereo"}:
+            result["export_channels"] = channels
+        elif channels in (None, ""):
+            result["export_channels"] = None
+
+        return result
+
+    def set_export_settings(self, settings: dict[str, Any]) -> None:
+        """Persist export settings snapshot."""
+        allowed_keys = {
+            "export_pre_pad_ms",
+            "export_post_pad_ms",
+            "export_format",
+            "export_sample_rate",
+            "export_bit_depth",
+            "export_channels",
+        }
+        payload = {key: settings.get(key) for key in allowed_keys}
+        self._store_json_dict("exportSettings", payload)
 
     def get_recent_projects(self, max_count: int = 10) -> list[tuple[Path, datetime]]:
         """Get list of recent projects.

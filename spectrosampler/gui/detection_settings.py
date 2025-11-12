@@ -1,6 +1,7 @@
 """Detection settings panel widget for processing parameters."""
 
 import logging
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -92,6 +93,7 @@ class DetectionSettingsPanel(QWidget):
         layout.addWidget(scroll)
         self.setLayout(layout)
         self._refresh_validation_state()
+        self._load_persisted_settings()
 
     def _create_detection_group(self) -> QGroupBox:
         """Create detection mode group.
@@ -114,7 +116,7 @@ class DetectionSettingsPanel(QWidget):
         self._threshold_spin.setRange(0.0, 100.0)
         self._threshold_spin.setValue(50.0)
         self._threshold_spin.setDecimals(1)
-        self._threshold_spin.valueChanged.connect(self._on_settings_changed)
+        self._threshold_spin.valueChanged.connect(self._on_threshold_changed)
         layout.addRow("Threshold:", self._threshold_spin)
 
         # CPU workers for background processing
@@ -398,6 +400,11 @@ class DetectionSettingsPanel(QWidget):
         self._refresh_validation_state()
         self.settings_changed.emit()
 
+    def _on_threshold_changed(self, value: float) -> None:
+        """Handle threshold percentile change."""
+        self._settings.threshold = float(value)
+        self._on_settings_changed()
+
     def _on_detection_pre_pad_changed(self, value: int) -> None:
         """Handle detection pre-padding change."""
         self._settings.detection_pre_pad_ms = float(value)
@@ -487,6 +494,93 @@ class DetectionSettingsPanel(QWidget):
     def get_validation_errors(self):
         """Return current validation errors."""
         return self._settings.validate()
+
+    def apply_settings(self, settings: ProcessingSettings, *, emit_signal: bool = True) -> None:
+        """Apply processing settings to the panel controls."""
+        snapshot = settings.to_dict()
+        self._settings = ProcessingSettings.from_dict(snapshot)
+
+        def _set_slider_pair(pair: dict[str, Any], value: float) -> None:
+            slider = pair["slider"]
+            spinbox = pair["spinbox"]
+            slider.blockSignals(True)
+            spinbox.blockSignals(True)
+            slider.setValue(int(value))
+            spinbox.setValue(int(value))
+            slider.blockSignals(False)
+            spinbox.blockSignals(False)
+
+        # Mode
+        self._mode_combo.blockSignals(True)
+        self._mode_combo.setCurrentText(self._settings.mode)
+        self._mode_combo.blockSignals(False)
+
+        # Threshold
+        threshold_value = self._settings.threshold
+        if isinstance(threshold_value, str):
+            try:
+                threshold_numeric = float(threshold_value)
+            except (TypeError, ValueError):
+                threshold_numeric = 50.0
+        else:
+            threshold_numeric = float(threshold_value if threshold_value is not None else 50.0)
+        self._threshold_spin.blockSignals(True)
+        self._threshold_spin.setValue(threshold_numeric)
+        self._threshold_spin.blockSignals(False)
+        self._settings.threshold = (
+            threshold_value if threshold_value is not None else threshold_numeric
+        )
+
+        # Worker count
+        self._workers_spin.blockSignals(True)
+        worker_value = max(1, int(getattr(self._settings, "max_workers", 1)))
+        self._workers_spin.setValue(worker_value)
+        self._workers_spin.blockSignals(False)
+        self._settings.max_workers = worker_value
+
+        # Timing sliders
+        _set_slider_pair(self._detection_pre_pad_slider, self._settings.detection_pre_pad_ms)
+        _set_slider_pair(self._detection_post_pad_slider, self._settings.detection_post_pad_ms)
+        _set_slider_pair(self._merge_gap_slider, self._settings.merge_gap_ms)
+        _set_slider_pair(self._min_dur_slider, self._settings.min_dur_ms)
+        _set_slider_pair(self._max_dur_slider, self._settings.max_dur_ms)
+        _set_slider_pair(self._min_gap_slider, self._settings.min_gap_ms)
+        self._set_max_samples_ui_value(self._settings.max_samples, persist=False)
+
+        # Sample spread controls
+        self._sample_spread_checkbox.blockSignals(True)
+        self._sample_spread_checkbox.setChecked(self._settings.sample_spread)
+        self._sample_spread_checkbox.blockSignals(False)
+
+        spread_mode_display = (self._settings.sample_spread_mode or "strict").capitalize()
+        if spread_mode_display not in {"Strict", "Closest"}:
+            spread_mode_display = "Strict"
+        self._sample_spread_mode_combo.blockSignals(True)
+        self._sample_spread_mode_combo.setCurrentText(spread_mode_display)
+        self._sample_spread_mode_combo.blockSignals(False)
+        self._settings.sample_spread_mode = spread_mode_display.lower()
+
+        # Audio processing controls
+        self._denoise_combo.blockSignals(True)
+        self._denoise_combo.setCurrentText(self._settings.denoise)
+        self._denoise_combo.blockSignals(False)
+        _set_slider_pair(self._hp_slider, self._settings.hp or 0.0)
+        _set_slider_pair(self._lp_slider, self._settings.lp or 0.0)
+        _set_slider_pair(self._nr_slider, self._settings.nr)
+
+        self._refresh_validation_state()
+        if emit_signal:
+            self.settings_changed.emit()
+
+    def _load_persisted_settings(self) -> None:
+        """Load persisted detection settings and apply them to the UI."""
+        try:
+            persisted = self._settings_manager.get_detection_settings()
+        except (RuntimeError, OSError) as exc:
+            logger.debug("Failed to load persisted detection settings: %s", exc, exc_info=exc)
+            persisted = None
+        if persisted:
+            self.apply_settings(persisted, emit_signal=False)
 
     def _set_max_samples_ui_value(self, value: int, persist: bool) -> None:
         """Clamp, persist, and display the max-sample value without triggering signals."""

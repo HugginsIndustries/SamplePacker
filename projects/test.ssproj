@@ -2,7 +2,7 @@
   "version": "1.0",
   "spectrosampler_version": "0.1.0",
   "created": "2025-11-06T01:32:00.700707Z",
-  "modified": "2025-11-10T04:43:59.842659Z",
+  "modified": "2025-11-12T03:33:17.105384Z",
   "audio_path": "C:\\dev\\SamplePacker\\recordings\\field.WAV",
   "segments": [
     {
@@ -798,8 +798,8 @@
       }
     },
     {
-      "start": 5266.11,
-      "end": 5267.429999999999,
+      "start": 5266.421410185991,
+      "end": 5267.74141018599,
       "detector": "voice_vad",
       "score": 1.0,
       "attrs": {
@@ -878,7 +878,8 @@
     "create_subfolders": true,
     "resolve_overlaps": "",
     "overlap_iou": 0.0,
-    "subfolder_template": "{basename}__{mode}__pre{pre}ms_post{post}ms_thr{thr}"
+    "subfolder_template": "{basename}__{mode}__pre{pre}ms_post{post}ms_thr{thr}",
+    "max_workers": 1
   },
   "export_settings": {
     "export_pre_pad_ms": 0.0,
@@ -899,8 +900,8 @@
     "time_signature_denominator": 4
   },
   "ui_state": {
-    "view_start": 5250.387754666123,
-    "view_end": 5281.326616225341,
+    "view_start": 5265.025907841445,
+    "view_end": 5268.49590705677,
     "zoom_level": 32.0
   }
 }

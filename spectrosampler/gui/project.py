@@ -88,58 +88,7 @@ def _processing_settings_to_dict(settings: ProcessingSettings) -> dict[str, Any]
     Returns:
         Dictionary representation of settings.
     """
-    # Get all attributes from ProcessingSettings
-    result = {}
-    # List of known ProcessingSettings attributes
-    known_attrs = [
-        "mode",
-        "threshold",
-        "detection_pre_pad_ms",
-        "detection_post_pad_ms",
-        "export_pre_pad_ms",
-        "export_post_pad_ms",
-        "pre_pad_ms",
-        "post_pad_ms",
-        "merge_gap_ms",
-        "min_dur_ms",
-        "max_dur_ms",
-        "min_gap_ms",
-        "no_merge_after_padding",
-        "max_samples",
-        "min_snr",
-        "sample_spread",
-        "sample_spread_mode",
-        "format",
-        "sample_rate",
-        "bit_depth",
-        "channels",
-        "denoise",
-        "hp",
-        "lp",
-        "nr",
-        "analysis_sr",
-        "analysis_mid_only",
-        "spectrogram",
-        "spectro_size",
-        "spectro_video",
-        "report",
-        "chunk_sec",
-        "cache",
-        "dry_run",
-        "save_temp",
-        "verbose",
-        "create_subfolders",
-        "resolve_overlaps",
-        "overlap_iou",
-        "subfolder_template",
-    ]
-    for key in known_attrs:
-        if hasattr(settings, key):
-            value = getattr(settings, key, None)
-            # Include all values except None (which will use defaults on load)
-            if value is not None:
-                result[key] = value
-    return result
+    return settings.to_dict()
 
 
 def _dict_to_processing_settings(data: dict[str, Any]) -> ProcessingSettings:
@@ -151,7 +100,7 @@ def _dict_to_processing_settings(data: dict[str, Any]) -> ProcessingSettings:
     Returns:
         ProcessingSettings object.
     """
-    return ProcessingSettings(**data)
+    return ProcessingSettings.from_dict(data)
 
 
 def _grid_settings_to_dict(settings: GridSettings) -> dict[str, Any]:

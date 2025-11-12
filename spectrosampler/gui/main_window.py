@@ -55,6 +55,7 @@ from spectrosampler.gui.settings import SettingsManager
 from spectrosampler.gui.spectrogram_tiler import SpectrogramTile, SpectrogramTiler
 from spectrosampler.gui.spectrogram_widget import SpectrogramWidget
 from spectrosampler.gui.theme import ThemeManager
+from spectrosampler.pipeline_settings import ProcessingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         # Project management
         self._project_path: Path | None = None
         self._project_modified: bool = False
+        self._suppress_settings_modified: bool = False
 
         # Audio playback
         self._media_player = QMediaPlayer(self)
@@ -136,6 +138,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_menu()
         self._setup_status_bar()
+        self._load_persisted_preferences()
 
         # Loading screen
         self._loading_screen = LoadingScreen(self, "Loading...", self._theme_manager)
@@ -1132,23 +1135,14 @@ class MainWindow(QMainWindow):
         if data.detection_settings:
             try:
                 settings = _dict_to_processing_settings(data.detection_settings)
-                # Update settings panel (this is tricky - we need to set values directly)
-                # The settings panel doesn't have a set_settings method, so we'll need to
-                # update the underlying _settings object
-                self._settings_panel._settings = settings
-                # Update UI controls to match settings
-                self._settings_panel._mode_combo.setCurrentText(settings.mode)
-                self._settings_panel._threshold_spin.setValue(
-                    float(settings.threshold)
-                    if isinstance(settings.threshold, (int, float))
-                    else 50.0
-                )
-                # Sync the max-sample control so saved projects reopen with the same cap.
-                self._settings_panel.apply_max_samples(getattr(settings, "max_samples", 256))
-                # Update other settings controls...
-                # For now, we'll just update the mode and threshold as examples
-                # A more complete implementation would update all controls
+                self._suppress_settings_modified = True
+                self._settings_panel.apply_settings(settings, emit_signal=False)
+                active_settings = self._settings_panel.get_settings()
+                self._apply_detection_settings(active_settings)
+                self._persist_detection_settings(active_settings)
+                self._suppress_settings_modified = False
             except (ValueError, TypeError, KeyError, RuntimeError) as e:
+                self._suppress_settings_modified = False
                 logger.warning("Failed to restore detection settings: %s", e, exc_info=e)
 
         # Restore export settings
@@ -1175,11 +1169,15 @@ class MainWindow(QMainWindow):
             if self._export_format == "wav":
                 if hasattr(self, "_export_format_wav_action"):
                     self._export_format_wav_action.setChecked(True)
+                if hasattr(self, "_export_format_flac_action"):
                     self._export_format_flac_action.setChecked(False)
             elif self._export_format == "flac":
                 if hasattr(self, "_export_format_flac_action"):
                     self._export_format_flac_action.setChecked(True)
+                if hasattr(self, "_export_format_wav_action"):
                     self._export_format_wav_action.setChecked(False)
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
 
         # Restore grid settings
         if data.grid_settings:
@@ -1878,21 +1876,104 @@ class MainWindow(QMainWindow):
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
-        # Update frequency range if filters changed
         settings = self._settings_panel.get_settings()
+        self._apply_detection_settings(settings)
+        self._persist_detection_settings(settings)
+        if not self._suppress_settings_modified:
+            self._project_modified = True
+            self._update_window_title()
+
+    def _apply_detection_settings(self, settings: ProcessingSettings) -> None:
+        """Apply detection settings to dependent components."""
         fmin = settings.hp
         fmax = settings.lp
         self._spectrogram_widget.set_frequency_range(fmin, fmax)
         self._tiler.fmin = fmin
         self._tiler.fmax = fmax
-
-        # Update grid manager
         self._grid_manager.settings = self._grid_settings
         self._spectrogram_widget.set_grid_manager(self._grid_manager)
 
-        # Mark as modified (settings changed)
-        self._project_modified = True
-        self._update_window_title()
+    def _persist_detection_settings(self, settings: ProcessingSettings) -> None:
+        """Persist detection settings snapshot."""
+        try:
+            self._settings_manager.set_detection_settings(settings)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            logger.debug("Failed to persist detection settings: %s", exc, exc_info=exc)
+
+    def _apply_export_settings_to_pipeline(self) -> None:
+        """Push export settings into the active pipeline configuration."""
+        if not self._pipeline_wrapper:
+            return
+        pipeline_settings = self._pipeline_wrapper.settings
+        pipeline_settings.export_pre_pad_ms = self._export_pre_pad_ms
+        pipeline_settings.export_post_pad_ms = self._export_post_pad_ms
+        pipeline_settings.format = self._export_format
+        pipeline_settings.sample_rate = self._export_sample_rate
+        pipeline_settings.bit_depth = self._export_bit_depth
+        pipeline_settings.channels = self._export_channels
+
+    def _persist_export_settings(self) -> None:
+        """Persist export settings snapshot."""
+        snapshot = {
+            "export_pre_pad_ms": self._export_pre_pad_ms,
+            "export_post_pad_ms": self._export_post_pad_ms,
+            "export_format": self._export_format,
+            "export_sample_rate": self._export_sample_rate,
+            "export_bit_depth": self._export_bit_depth,
+            "export_channels": self._export_channels,
+        }
+        try:
+            self._settings_manager.set_export_settings(snapshot)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            logger.debug("Failed to persist export settings: %s", exc, exc_info=exc)
+
+    def _load_persisted_export_settings(self) -> None:
+        """Load persisted export settings into runtime state."""
+        try:
+            snapshot = self._settings_manager.get_export_settings()
+        except (RuntimeError, OSError) as exc:
+            logger.debug("Failed to load persisted export settings: %s", exc, exc_info=exc)
+            snapshot = {}
+
+        if snapshot:
+            self._export_pre_pad_ms = float(
+                snapshot.get("export_pre_pad_ms", self._export_pre_pad_ms)
+            )
+            self._export_post_pad_ms = float(
+                snapshot.get("export_post_pad_ms", self._export_post_pad_ms)
+            )
+            format_value = snapshot.get("export_format", self._export_format)
+            if isinstance(format_value, str):
+                self._export_format = format_value
+            self._export_sample_rate = snapshot.get("export_sample_rate", self._export_sample_rate)
+            self._export_bit_depth = snapshot.get("export_bit_depth", self._export_bit_depth)
+            self._export_channels = snapshot.get("export_channels", self._export_channels)
+
+        if hasattr(self, "_export_format_wav_action"):
+            self._export_format_wav_action.setChecked(self._export_format == "wav")
+        if hasattr(self, "_export_format_flac_action"):
+            self._export_format_flac_action.setChecked(self._export_format == "flac")
+
+        self._apply_export_settings_to_pipeline()
+
+    def _load_persisted_preferences(self) -> None:
+        """Load persisted detection and export preferences."""
+        try:
+            persisted_detection = self._settings_manager.get_detection_settings()
+        except (RuntimeError, OSError) as exc:
+            logger.debug("Failed to load persisted detection settings: %s", exc, exc_info=exc)
+            persisted_detection = None
+
+        if persisted_detection:
+            self._settings_panel.apply_settings(persisted_detection, emit_signal=False)
+
+        active_settings = self._settings_panel.get_settings()
+        self._suppress_settings_modified = True
+        self._apply_detection_settings(active_settings)
+        self._persist_detection_settings(active_settings)
+        self._suppress_settings_modified = False
+
+        self._load_persisted_export_settings()
 
     def _on_sample_selected(self, index: int) -> None:
         """Handle sample selection.
@@ -2116,6 +2197,7 @@ class MainWindow(QMainWindow):
             seg = self._pipeline_wrapper.current_segments[index]
             # Update player widget to show playing sample
             self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
+            self._spectrogram_widget.set_playback_state(index, seg.start, paused=False)
             self._play_segment(seg.start, seg.end)
 
     def _disconnect_media_status_handler(self) -> None:
@@ -2219,6 +2301,14 @@ class MainWindow(QMainWindow):
                 self._is_paused = False
                 self._paused_position = 0
 
+            if self._current_playing_index is not None:
+                indicator_time = start_time + (seek_position / 1000.0)
+                self._spectrogram_widget.set_playback_state(
+                    self._current_playing_index,
+                    indicator_time,
+                    paused=False,
+                )
+
             # Clean up temp file when playback finishes and handle looping
             def on_playback_finished(status):
                 if status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -2241,6 +2331,7 @@ class MainWindow(QMainWindow):
                     self._current_playing_end = None
                     self._is_paused = False
                     self._paused_position = 0
+                    self._spectrogram_widget.set_playback_state(None, None)
 
                     if self._temp_playback_file and self._temp_playback_file.exists():
                         try:
@@ -2323,11 +2414,19 @@ class MainWindow(QMainWindow):
         # If already playing the same sample and paused, resume
         if self._is_paused and self._current_playing_index == index:
             # Resume from paused position
-            self._media_player.setPosition(self._paused_position)
+            paused_position = self._paused_position
+            self._media_player.setPosition(paused_position)
             self._media_player.play()
             self._is_paused = False
             self._paused_position = 0
             self._sample_player.set_playing(True)
+            if self._current_playing_start is not None:
+                playback_time = self._current_playing_start + (paused_position / 1000.0)
+                self._spectrogram_widget.set_playback_state(
+                    self._current_playing_index,
+                    playback_time,
+                    paused=False,
+                )
         else:
             # Start playing new sample
             self._current_playing_index = index
@@ -2341,6 +2440,13 @@ class MainWindow(QMainWindow):
         self._is_paused = True
         self._media_player.pause()
         self._sample_player.set_playing(False)
+        if self._current_playing_index is not None and self._current_playing_start is not None:
+            playback_time = self._current_playing_start + (self._paused_position / 1000.0)
+            self._spectrogram_widget.set_playback_state(
+                self._current_playing_index,
+                playback_time,
+                paused=True,
+            )
 
     def _on_player_stop_requested(self) -> None:
         """Handle player stop request."""
@@ -2361,6 +2467,7 @@ class MainWindow(QMainWindow):
         self._current_playing_end = None
         self._is_paused = False
         self._paused_position = 0
+        self._spectrogram_widget.set_playback_state(None, None)
 
         # Reset progress bar
         self._sample_player.set_position(
@@ -2418,6 +2525,15 @@ class MainWindow(QMainWindow):
             duration = self._sample_player._duration
         if duration > 0:
             self._sample_player.set_position(position, duration)
+        if self._current_playing_index is not None and self._current_playing_start is not None:
+            playback_time = self._current_playing_start + (position / 1000.0)
+            if self._current_playing_end is not None and playback_time > self._current_playing_end:
+                playback_time = self._current_playing_end
+            self._spectrogram_widget.set_playback_state(
+                self._current_playing_index,
+                playback_time,
+                paused=self._is_paused,
+            )
 
     def _on_media_duration_changed(self, duration: int) -> None:
         """Handle media player duration change.
@@ -2440,10 +2556,25 @@ class MainWindow(QMainWindow):
         if self._media_player.duration() > 0:
             # Clamp position to valid range
             position_ms = max(0, min(position_ms, self._media_player.duration()))
+            was_paused = self._is_paused
             self._media_player.setPosition(position_ms)
+            if was_paused:
+                # Some backends resume playback after seeking while paused; enforce pause.
+                self._media_player.pause()
+                self._sample_player.set_playing(False)
             # If paused, update the paused position so resume uses the new scrubbed position
             if self._is_paused:
                 self._paused_position = position_ms
+                if (
+                    self._current_playing_index is not None
+                    and self._current_playing_start is not None
+                ):
+                    playback_time = self._current_playing_start + (position_ms / 1000.0)
+                    self._spectrogram_widget.set_playback_state(
+                        self._current_playing_index,
+                        playback_time,
+                        paused=True,
+                    )
 
     def _on_sample_table_changed(self, item):
         # Legacy handler removed with model/view refactor
@@ -3046,9 +3177,8 @@ class MainWindow(QMainWindow):
         )
         if ok:
             self._export_pre_pad_ms = value
-            # Update settings if pipeline wrapper exists
-            if self._pipeline_wrapper:
-                self._pipeline_wrapper.settings.export_pre_pad_ms = value
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
             # Mark as modified (export settings changed)
             self._project_modified = True
             self._update_window_title()
@@ -3068,9 +3198,8 @@ class MainWindow(QMainWindow):
         )
         if ok:
             self._export_post_pad_ms = value
-            # Update settings if pipeline wrapper exists
-            if self._pipeline_wrapper:
-                self._pipeline_wrapper.settings.export_post_pad_ms = value
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
             # Mark as modified (export settings changed)
             self._project_modified = True
             self._update_window_title()
@@ -3081,9 +3210,8 @@ class MainWindow(QMainWindow):
         # Update action states
         self._export_format_wav_action.setChecked(format == "wav")
         self._export_format_flac_action.setChecked(format == "flac")
-        # Update settings if pipeline wrapper exists
-        if self._pipeline_wrapper:
-            self._pipeline_wrapper.settings.format = format
+        self._apply_export_settings_to_pipeline()
+        self._persist_export_settings()
         # Mark as modified (export settings changed)
         self._project_modified = True
         self._update_window_title()
@@ -3098,9 +3226,8 @@ class MainWindow(QMainWindow):
         )
         if ok:
             self._export_sample_rate = value if value > 0 else None
-            # Update settings if pipeline wrapper exists
-            if self._pipeline_wrapper:
-                self._pipeline_wrapper.settings.sample_rate = self._export_sample_rate
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
             # Mark as modified (export settings changed)
             self._project_modified = True
             self._update_window_title()
@@ -3126,9 +3253,8 @@ class MainWindow(QMainWindow):
                 self._export_bit_depth = None
             else:
                 self._export_bit_depth = value
-            # Update settings if pipeline wrapper exists
-            if self._pipeline_wrapper:
-                self._pipeline_wrapper.settings.bit_depth = self._export_bit_depth
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
             # Mark as modified (export settings changed)
             self._project_modified = True
             self._update_window_title()
@@ -3154,9 +3280,8 @@ class MainWindow(QMainWindow):
                 self._export_channels = None
             else:
                 self._export_channels = value
-            # Update settings if pipeline wrapper exists
-            if self._pipeline_wrapper:
-                self._pipeline_wrapper.settings.channels = self._export_channels
+            self._apply_export_settings_to_pipeline()
+            self._persist_export_settings()
             # Mark as modified (export settings changed)
             self._project_modified = True
             self._update_window_title()

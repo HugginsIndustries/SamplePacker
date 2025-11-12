@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +16,50 @@ class ValidationIssue:
 
 class ProcessingSettings:
     """Container for processing settings."""
+
+    _SERIALIZED_FIELDS: ClassVar[tuple[str, ...]] = (
+        "mode",
+        "threshold",
+        "detection_pre_pad_ms",
+        "detection_post_pad_ms",
+        "export_pre_pad_ms",
+        "export_post_pad_ms",
+        "pre_pad_ms",
+        "post_pad_ms",
+        "merge_gap_ms",
+        "min_dur_ms",
+        "max_dur_ms",
+        "min_gap_ms",
+        "no_merge_after_padding",
+        "max_samples",
+        "min_snr",
+        "sample_spread",
+        "sample_spread_mode",
+        "format",
+        "sample_rate",
+        "bit_depth",
+        "channels",
+        "denoise",
+        "hp",
+        "lp",
+        "nr",
+        "analysis_sr",
+        "analysis_mid_only",
+        "spectrogram",
+        "spectro_size",
+        "spectro_video",
+        "report",
+        "chunk_sec",
+        "cache",
+        "dry_run",
+        "save_temp",
+        "verbose",
+        "create_subfolders",
+        "resolve_overlaps",
+        "overlap_iou",
+        "subfolder_template",
+        "max_workers",
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize settings from keyword arguments."""
@@ -315,3 +359,22 @@ class ProcessingSettings:
             issues.append(ValidationIssue("overlap_iou", "Overlap IoU must be between 0 and 1."))
 
         return issues
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize processing settings to a plain dictionary."""
+        result: dict[str, Any] = {}
+        for key in self._SERIALIZED_FIELDS:
+            if hasattr(self, key):
+                value = getattr(self, key, None)
+                if value is not None:
+                    result[key] = value
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> ProcessingSettings:
+        """Create processing settings from a previously serialized dictionary."""
+        if data is None:
+            return cls()
+        if not isinstance(data, dict):
+            raise TypeError("ProcessingSettings.from_dict expects a dictionary.")
+        return cls(**data)

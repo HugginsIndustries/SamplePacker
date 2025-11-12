@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 29 items, P2: 20 items_
+_Summary: P0: 0 items, P1: 27 items, P2: 20 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -86,9 +86,6 @@ _Summary: P0: 0 items, P1: 29 items, P2: 20 items_
 - [ ] [P1] Add spectrogram scale options (linear/log/exp) and color maps
   - Real-time switchable scaling; selectable color schemes.
   - Acceptance: Scale and color map controls with immediate visual update. [Docs Impact]
-- [ ] [P1] Add playback indicator in main spectrogram
-  - Moving line (or icon) for the currently playing sample when in view.
-  - Acceptance: Indicator accurately tracks playback position.
 - [ ] [P2] Add waveform view toggle
   - Switch between spectrogram and waveform for precise edits.
   - Acceptance: Toggle control with synced selection and zoom.
@@ -133,9 +130,6 @@ _Summary: P0: 0 items, P1: 29 items, P2: 20 items_
 - [ ] [P1] Add presets for detection/export (GUI integration)
   - Load/Save presets as YAML in `spectrosampler/presets`; quick selector in UI.
   - Acceptance: Preset dropdown and “Save as preset…” dialog. [Docs Impact]
-- [ ] [P1] Persist detection and export settings (QSettings + project round-trip)
-  - Restore on app restart and when loading projects.
-  - Acceptance: Last-used values restored; project load applies saved values. [Docs Impact]
 - [ ] [P2] Add customizable keyboard shortcuts
   - Remapping UI with persistence.
   - Acceptance: Changes survive restart; conflicts are prevented.
