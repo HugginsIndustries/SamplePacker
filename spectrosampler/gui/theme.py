@@ -264,6 +264,9 @@ class ThemeManager(QObject):
             QMenu::item:selected {{
                 background-color: {p['selection'].name()};
             }}
+            QMenu::item:disabled {{
+                color: {p['text_secondary'].name()};
+            }}
             QPushButton {{
                 background-color: {p['background_secondary'].name()};
                 border: 1px solid {p['border'].name()};
