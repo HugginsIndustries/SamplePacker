@@ -11,7 +11,7 @@ Items marked [Docs Impact] will require updates to `README.md` and/or `docs/GUI_
 - [P1] High-priority improvements that materially enhance UX/functionality; schedule next iterations.
 - [P2] Nice-to-have or longer-term enhancements; plan after P0/P1.
 
-_Summary: P0: 0 items, P1: 25 items, P2: 16 items_
+_Summary: P0: 0 items, P1: 24 items, P2: 13 items_
 
 **Maintainers guide (editing this TODO):**
 - Use imperative phrasing for items ("Add", "Improve", "Expose", "Implement").
@@ -37,13 +37,6 @@ _Summary: P0: 0 items, P1: 25 items, P2: 16 items_
   - Acceptance:
     - Documented default set per detector.
     - Measurable precision/recall improvement on a small reference clip set.
-- [ ] [P1] Finish WebRTC VAD detection pipeline (from `spectrosampler/detectors/vad.py:VoiceVADDetector.detect`)
-  - Implement optional bandpass preprocessing that respects `low_freq`/`high_freq` using `spectrosampler/dsp.bandpass_filter` or an FFmpeg fallback when configured.
-  - Convert float audio buffers into 16-bit PCM frames derived from `frame_duration_ms`, ensuring byte alignment for WebRTC VAD.
-  - Merge consecutive voiced frames into `Segment` instances and discard runs shorter than `min_duration_ms`.
-  - Acceptance:
-    - Optional bandpass filtering and frame merging honor `min_duration_ms` and aggressiveness while remaining thread-safe.
-    - Unit tests cover voiced/unvoiced fixtures and assert consistent segment counts when `webrtcvad` is available.
 
 ### Audio Playback
 - [ ] [P1] Improve seamless looping for short samples
@@ -76,10 +69,6 @@ _Summary: P0: 0 items, P1: 25 items, P2: 16 items_
   - Acceptance: Zoom In/Out menu items and shortcuts removed; README updated; scroll wheel zoom and navigator highlight zoom remain functional; no broken functionality remains. [Docs Impact]
 
 ### Processing Pipeline
-- [ ] [P1] Build resilient batch processing runner (from `spectrosampler/pipeline.py:Pipeline.process`)
-  - Acceptance:
-    - Directory processing handles large trees with resume/skip flags, per-file progress, and `jobs>1` parallel execution.
-    - Unit tests or integration smoke tests cover single-file and directory workflows, ensuring deterministic output order.
 - [ ] [P2] Configure audio cache lifecycle (from `spectrosampler/pipeline.py:Pipeline.__init__`)
   - Acceptance:
     - Cache directory location is configurable, created on demand, and pruned of stale entries without user intervention.
@@ -87,21 +76,10 @@ _Summary: P0: 0 items, P1: 25 items, P2: 16 items_
 
 ## **Features**
 
-### Sample Export & Naming
-- [ ] [P2] Add bulk rename/edit for samples
-  - Multi-select + batch operations, including find/replace in names.
-  - Acceptance: Apply a pattern or find/replace to selected rows.
-- [ ] [P2] Add export to multiple formats in one run
-  - WAV/FLAC/MP3 simultaneous export.
-  - Acceptance: Single operation writes multiple formats per selected sample.
-
 ### UI Improvements
 - [ ] [P1] Add spectrogram scale options (linear/log/exp) and color maps
   - Real-time switchable scaling; selectable color schemes.
   - Acceptance: Scale and color map controls with immediate visual update. [Docs Impact]
-- [ ] [P2] Add waveform view toggle
-  - Switch between spectrogram and waveform for precise edits.
-  - Acceptance: Toggle control with synced selection and zoom.
 - [ ] [P2] Implement custom splitter handles for editor stack
   - Keep independent divider handles for player, waveform, and spectrogram when collapsing views.
   - Ensure collapsing the waveform by drag leaves a handle visible without resizing the player.
@@ -144,10 +122,15 @@ _Summary: P0: 0 items, P1: 25 items, P2: 16 items_
   - Allow per-sample overrides for settings that support it (bandpass filtering, padding, normalization, etc.); per-sample settings override global settings when configured.
   - "Cancel" and "Export Sample(s)" buttons visible at bottom regardless of active tab.
   - Move all options from current "Export" menu into new export dialog (pre-padding, post-padding, format, sample rate, bit depth, channels, peak normalization).
+  - Replace the single format dropdown with individual checkboxes for each available output format (defaulting to only WAV enabled). This will allow users to select multiple formats for one export process.
   - Include export progress tracking with progress bar, ETA, safe cancel, and end-of-run dialog summarizing per-sample status (success/failures).
   - Support batch export with pause/resume functionality: track per-sample status and allow resuming to complete remaining items after restart.
   - Persist all export settings (batch defaults and per-sample overrides) across sessions.
   - Acceptance: Export dialog has Global and Samples tabs; Samples tab shows current sample preview with forward/back navigation and position indicator (e.g., "4/72"); all settings available as global batch defaults; per-sample settings can override global when configured; Cancel and Export buttons always visible; progress tracking with cancel and summary dialog; pause/resume functionality works; all Export menu options moved to dialog; settings persist across sessions. [Docs Impact]
+- [ ] [P1] Add MP3 export support
+  - Integrate MP3 encoding alongside existing WAV/FLAC paths.
+  - Ensure new format works in export dialog presets and CLI batch pipelines.
+  - Acceptance: MP3 appears as a selectable export format, encodes successfully with metadata, and is covered by automated tests. [Docs Impact]
 - [ ] [P1] Expand HTML report contents (from `spectrosampler/report.py:create_html_report`)
   - Acceptance:
     - Report includes processing settings summary, detector statistics, and deep links to generated assets.
