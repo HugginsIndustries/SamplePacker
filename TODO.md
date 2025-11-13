@@ -108,6 +108,7 @@ _Summary: P0: 0 items, P1: 21 items, P2: 12 items_
   - "Cancel" and "Export Sample(s)" buttons visible at bottom regardless of active tab.
   - Move all options from current "Export" menu into new export dialog (pre-padding, post-padding, format, sample rate, bit depth, channels, peak normalization).
   - Replace the single format dropdown with individual checkboxes for each available output format (defaulting to only WAV enabled). This will allow users to select multiple formats for one export process.
+  - Implement metadata fields: per-batch Artist (default "SpectroSampler"), Album (default to input audio filename), Year (default current year); per-sample Title (default export filename); exports include Track Numbers derived from sample IDs.
   - Include export progress tracking with progress bar, ETA, safe cancel, and end-of-run dialog summarizing per-sample status (success/failures).
   - Support batch export with pause/resume functionality: track per-sample status and allow resuming to complete remaining items after restart.
   - Persist all export settings (batch defaults and per-sample overrides) across sessions.
