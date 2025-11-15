@@ -27,7 +27,7 @@ Autosave is enabled by default. If SpectroSampler detects an autosave newer than
 
 | Area | Purpose |
 | --- | --- |
-| **Detection Settings (left panel)** | Detector choice, thresholds, timing limits, CPU worker count, denoise/filters, overlap defaults, detection trigger button. |
+| **Toolbar (left panel)** | Mode selection buttons (Select, Edit, Create) for tool mode switching. |
 | **Sample Player (top center)** | Metadata readout, play/pause/stop, next/previous navigation, loop toggle, auto-play-next toggle, scrub slider, and a playback line mirrored on the spectrogram. |
 | **Waveform Preview (above spectrogram)** | Downsampled amplitude view linked to the editor view; drag the divider to resize or collapse it, or toggle via **View → Show Waveform**. |
 | **Spectrogram Canvas (center)** | Zoom/pan view, draw or adjust sample regions, right-click for context actions (play, toggle enable/disable, rename/delete selections, center/fill, disable others), drag handles to resize. |
@@ -73,7 +73,14 @@ Your choice is saved in user settings and stored with the current project, so re
 3. The status bar confirms sample rate, channels, and duration.
 4. If loading fails, the dialog highlights the root cause (missing file, permissions, unsupported codec, or missing FFmpeg) and suggests the next step—follow the guidance or convert the file to WAV/FLAC before retrying.
 
-### 3.2 Choosing a Detector
+### 3.2 Opening the Detection Dialog
+
+Open the **Detect Samples** dialog via **Edit → Detect Samples** (`Ctrl+D`). The dialog contains all detection settings organized into sections:
+
+- **Left side**: Detection Mode, Overlap Resolution, and Audio Processing
+- **Right side**: Timing Parameters
+
+### 3.3 Choosing a Detector
 
 The **Detection Mode** combo offers:
 
@@ -85,7 +92,7 @@ The **Detection Mode** combo offers:
 
 Adjust the **Threshold** slider to refine sensitivity. Lower values detect more segments; higher values are stricter.
 
-### 3.3 Timing & Overlap Controls
+### 3.4 Timing & Overlap Controls
 
 - **Detection pre/post padding** – Add context around detected regions before they appear in the table.
 - **Merge gap / min gap** – Automatically merge detections or insist on spacing between them.
@@ -93,16 +100,16 @@ Adjust the **Threshold** slider to refine sensitivity. Lower values detect more 
 - **Max samples** – Cap the total number of detections (1–10,000) so exported filenames stay aligned with the 4-digit sample index.
 - **Sample spread** – Keep detections evenly spaced (strict or closest).
 - **Overlap Resolution** – Decide how to handle duplicates/overlaps when re-running detection; pick defaults and optionally remember them (the choice is written into the project so reopening restores it automatically).
-> The detection header shows a red validation banner and disables the **Detect Samples** button whenever settings conflict (for example, a minimum duration greater than the maximum or a high-pass frequency above the low-pass). Fix the highlighted values and the button re-enables automatically.
+> The dialog shows a red validation banner and disables the **Detect Samples** button whenever settings conflict (for example, a minimum duration greater than the maximum or a high-pass frequency above the low-pass). Fix the highlighted values and the button re-enables automatically.
 
-### 3.4 Audio Processing & Resources
+### 3.5 Audio Processing & Resources
 
 - **Denoise (off / afftdn / arnndn)** – Light clean-up before detection.
 - **High-pass / Low-pass** – Restrict processing to a frequency band; the spectrogram updates live.
 - **Noise reduction** – Apply additional attenuation in dB.
 - **CPU workers** – Tweak how many cores detection uses (default is the system count minus one).
 
-When the settings look good, click **Detect Samples** or press `Ctrl+D`. A full-screen overlay shows progress while detection runs on a worker thread.
+When the settings look good, click **Detect Samples** in the dialog. A full-screen overlay shows progress while detection runs on a worker thread.
 
 > Screenshot placeholder: `docs/images/detection-overlay.png`
 
@@ -278,7 +285,7 @@ Run `spectrosampler-gui --verbose` to capture additional diagnostics in the cons
 
 - **README** – High-level feature overview and installation instructions.
 - **`spectrosampler/gui/main_window.py`** – Source for menus, shortcuts, and interaction logic.
-- **`spectrosampler/gui/detection_settings.py`** – Detection configuration widgets.
+- **`spectrosampler/gui/detection_dialog.py`** – Detection settings dialog.
 - **`spectrosampler/gui/sample_player.py`** – Player behavior and signals.
 - **`spectrosampler/gui/autosave.py`** – Autosave implementation details.
 

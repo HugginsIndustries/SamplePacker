@@ -1,17 +1,20 @@
-"""Detection settings panel widget for processing parameters."""
+"""Detection settings dialog for processing parameters."""
 
 import logging
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
-    QPushButton,
+    QMessageBox,
     QScrollArea,
     QSlider,
     QSpinBox,
@@ -25,11 +28,8 @@ from spectrosampler.pipeline_settings import ProcessingSettings
 logger = logging.getLogger(__name__)
 
 
-class DetectionSettingsPanel(QWidget):
-    """Detection settings panel widget."""
-
-    settings_changed = Signal()  # Emitted when settings change
-    detect_samples_requested = Signal()  # Emitted when detection is requested
+class DetectionDialog(QDialog):
+    """Detection settings dialog."""
 
     _BEHAVIOR_TO_LABEL = {
         "discard_overlaps": "Discard Overlaps",
@@ -38,17 +38,24 @@ class DetectionSettingsPanel(QWidget):
     }
     _LABEL_TO_BEHAVIOR = {label: key for key, label in _BEHAVIOR_TO_LABEL.items()}
 
-    def __init__(self, parent: QWidget | None = None):
-        """Initialize detection settings panel.
+    def __init__(
+        self, parent: QWidget | None = None, initial_settings: ProcessingSettings | None = None
+    ):
+        """Initialize detection settings dialog.
 
         Args:
             parent: Parent widget.
+            initial_settings: Initial settings to apply (optional).
         """
         super().__init__(parent)
+        self.setWindowTitle("Detect Samples")
+        self.setModal(True)
 
         # Create settings
         self._settings = ProcessingSettings()
         self._settings_manager = SettingsManager()
+
+        # Load persisted settings
         try:
             self._settings.show_overlap_dialog = self._settings_manager.get_show_overlap_dialog()
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
@@ -70,48 +77,86 @@ class DetectionSettingsPanel(QWidget):
         except (TypeError, ValueError) as exc:
             logger.debug("Falling back to default max samples: %s", exc, exc_info=exc)
 
-        # Create layout
-        layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        # Apply initial settings if provided
+        if initial_settings:
+            snapshot = initial_settings.to_dict()
+            self._settings = ProcessingSettings.from_dict(snapshot)
 
-        # Create scroll area
+        # Create main layout
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(12)
+
+        # Create scroll area for content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+        # Content widget with two-column layout
         content = QWidget()
-        content_layout = QVBoxLayout()
+        content_layout = QHBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(16)
 
-        # Detection mode
+        # Left column: Detection Mode, Overlap Resolution, Audio Processing
+        left_column = QVBoxLayout()
+        left_column.setSpacing(12)
+
         detection_group = self._create_detection_group()
-        content_layout.addWidget(detection_group)
+        left_column.addWidget(detection_group)
 
-        # Timing parameters
-        timing_group = self._create_timing_group()
-        content_layout.addWidget(timing_group)
-
-        # Overlap Resolution
         overlap_group = self._create_overlap_group()
-        content_layout.addWidget(overlap_group)
+        left_column.addWidget(overlap_group)
 
-        # Audio processing
         audio_group = self._create_audio_group()
-        content_layout.addWidget(audio_group)
+        left_column.addWidget(audio_group)
 
-        # Update controls
-        update_group = self._create_update_group()
-        content_layout.addWidget(update_group)
+        left_column.addStretch()
 
-        content_layout.addStretch()
+        # Right column: Timing Parameters
+        right_column = QVBoxLayout()
+        right_column.setSpacing(12)
+
+        timing_group = self._create_timing_group()
+        right_column.addWidget(timing_group)
+
+        right_column.addStretch()
+
+        # Add columns to content layout
+        left_widget = QWidget()
+        left_widget.setLayout(left_column)
+        right_widget = QWidget()
+        right_widget.setLayout(right_column)
+
+        content_layout.addWidget(left_widget)
+        content_layout.addWidget(right_widget)
 
         content.setLayout(content_layout)
         scroll.setWidget(content)
 
-        layout.addWidget(scroll)
-        self.setLayout(layout)
+        main_layout.addWidget(scroll)
+
+        # Button box at bottom right
+        button_box = QDialogButtonBox()
+        self._cancel_button = button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+        self._detect_button = button_box.addButton(
+            "Detect Samples", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self._detect_button.setDefault(True)
+        button_box.rejected.connect(self.reject)
+        button_box.accepted.connect(self._on_detect_clicked)
+
+        main_layout.addWidget(button_box)
+
+        self.setLayout(main_layout)
+
+        # Validation label (initially hidden)
+        self._validation_label = QLabel()
+        self._validation_label.setWordWrap(True)
+        self._validation_label.setStyleSheet("color: #d64545; font-size: 12px;")
+        self._validation_label.setVisible(False)
+        main_layout.insertWidget(main_layout.count() - 1, self._validation_label)
+
         self._refresh_validation_state()
 
         # Apply dropdown arrow styling to all QComboBox widgets
@@ -122,7 +167,14 @@ class DetectionSettingsPanel(QWidget):
 
         apply_combo_styling_to_all_combos(self)
         apply_checkbox_styling_to_all_checkboxes(self)
-        self._load_persisted_settings()
+
+        # Apply settings to UI controls (either from initial_settings or persisted)
+        if initial_settings:
+            # Apply the initial settings that were already set
+            self.apply_settings(self._settings, emit_signal=False)
+        else:
+            # Load and apply persisted settings
+            self._load_persisted_settings()
 
     def _create_detection_group(self) -> QGroupBox:
         """Create detection mode group.
@@ -330,23 +382,6 @@ class DetectionSettingsPanel(QWidget):
         group.setLayout(layout)
         return group
 
-    def _create_update_group(self) -> QGroupBox:
-        """Create update controls group.
-
-        Returns:
-            QGroupBox widget.
-        """
-        group = QGroupBox("Detection")
-        layout = QVBoxLayout()
-
-        # Detect samples button
-        self._detect_button = QPushButton("Detect Samples")
-        self._detect_button.clicked.connect(self._on_detect_clicked)
-        layout.addWidget(self._detect_button)
-
-        group.setLayout(layout)
-        return group
-
     def _create_slider_spin(self, min_val: int, max_val: int, value: int, unit: str) -> dict:
         """Create slider with spinbox.
 
@@ -386,12 +421,11 @@ class DetectionSettingsPanel(QWidget):
     def _on_mode_changed(self, mode: str) -> None:
         """Handle mode change."""
         self._settings.mode = mode
-        self.settings_changed.emit()
+        self._on_settings_changed()
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
         self._refresh_validation_state()
-        self.settings_changed.emit()
 
     def _on_threshold_changed(self, value: float) -> None:
         """Handle threshold percentile change."""
@@ -469,8 +503,19 @@ class DetectionSettingsPanel(QWidget):
         self._on_settings_changed()
 
     def _on_detect_clicked(self) -> None:
-        """Handle detect button click."""
-        self.detect_samples_requested.emit()
+        """Handle detect button click - validate and accept if valid."""
+        errors = self.get_validation_errors()
+        if errors:
+            messages = "\n".join(issue.message for issue in errors)
+            QMessageBox.warning(
+                self,
+                "Invalid Settings",
+                "Please correct the following before running detection:\n\n" + messages,
+            )
+            return
+        # Persist settings before accepting
+        self._persist_settings()
+        self.accept()
 
     def get_settings(self) -> ProcessingSettings:
         """Get processing settings.
@@ -480,16 +525,12 @@ class DetectionSettingsPanel(QWidget):
         """
         return self._settings
 
-    def apply_max_samples(self, value: int, persist: bool = True) -> None:
-        """Update the max-sample control and optionally persist the provided value."""
-        self._set_max_samples_ui_value(value, persist=persist)
-
     def get_validation_errors(self):
         """Return current validation errors."""
         return self._settings.validate()
 
     def apply_settings(self, settings: ProcessingSettings, *, emit_signal: bool = True) -> None:
-        """Apply processing settings to the panel controls."""
+        """Apply processing settings to the dialog controls."""
         snapshot = settings.to_dict()
         self._settings = ProcessingSettings.from_dict(snapshot)
 
@@ -570,8 +611,6 @@ class DetectionSettingsPanel(QWidget):
         )
 
         self._refresh_validation_state()
-        if emit_signal:
-            self.settings_changed.emit()
 
     def _load_persisted_settings(self) -> None:
         """Load persisted detection settings and apply them to the UI."""
@@ -582,6 +621,13 @@ class DetectionSettingsPanel(QWidget):
             persisted = None
         if persisted:
             self.apply_settings(persisted, emit_signal=False)
+
+    def _persist_settings(self) -> None:
+        """Persist current settings."""
+        try:
+            self._settings_manager.set_detection_settings(self._settings)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            logger.debug("Failed to persist detection settings: %s", exc, exc_info=exc)
 
     def _set_max_samples_ui_value(self, value: int, persist: bool) -> None:
         """Clamp, persist, and display the max-sample value without triggering signals."""
@@ -637,24 +683,9 @@ class DetectionSettingsPanel(QWidget):
             except (TypeError, ValueError, RuntimeError) as exc:
                 logger.debug("Unable to persist overlap default behavior: %s", exc, exc_info=exc)
 
-        if emit_signal:
-            self.settings_changed.emit()
-
     def _refresh_validation_state(self) -> None:
         """Update UI elements based on current validation errors."""
         errors = self._settings.validate()
-        if not hasattr(self, "_validation_label"):
-            self._validation_label = QLabel()
-            self._validation_label.setWordWrap(True)
-            self._validation_label.setStyleSheet("color: #d64545; font-size: 12px;")
-            self._validation_label.setVisible(False)
-            # Insert validation label above the detect button
-            detect_parent = self._detect_button.parent()
-            if isinstance(detect_parent, QWidget):
-                layout = detect_parent.layout()
-                if isinstance(layout, QVBoxLayout):
-                    layout.insertWidget(0, self._validation_label)
-
         if errors:
             messages = "\n".join(issue.message for issue in errors)
             self._validation_label.setText(messages)

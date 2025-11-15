@@ -117,12 +117,12 @@ _Summary: P0: 0 items, P1: 19 items, P2: 12 items_
   - Acceptance: The three-choice dialog appears; append preserves timing alignment.
 
 #### Editing Workflow
-- [ ] [P1] Add tool modes for spectrogram interaction (Select/Edit/Create)
+- [ ] [P1] Implement tool modes for spectrogram interaction (Select/Edit/Create)
   - Implement three distinct tool modes similar to modern DAW software: "Select" (allows drag selection of samples compatible with CTRL/SHIFT selection and existing click + CTRL/SHIFT click selection), "Edit" (allows current editing behavior: dragging samples/edges), and "Create" (allows current click drag adding of samples).
   - When each mode is active, all other modes are disabled, allowing the user to select exactly what action they want to do.
-  - Add tool mode selector toolbar above detection settings panel (with divider, same default height as player) with visual indication of active mode.
+  - Tool mode selector toolbar placeholder has been added in place of detection settings panel (detection settings moved to dialog). Toolbar currently contains non-functional placeholder buttons for Select, Edit, and Create modes.
   - Ensure feature integrates with all existing functionality (undo/redo, ESC cancellation, context menus, keyboard shortcuts, etc.).
-  - Acceptance: Tool mode selector toolbar visible above detection settings with divider; Select mode enables drag selection box; Edit mode enables sample drag/resize; Create mode enables sample creation; only one mode active at a time; all existing features work correctly in each mode. [Docs Impact]
+  - Acceptance: Select mode enables drag selection box; Edit mode enables sample drag/resize; Create mode enables sample creation; only one mode active at a time; all existing features work correctly in each mode; toolbar buttons reflect active mode. [Docs Impact]
 - [ ] [P1] Add temporary grid snap on Ctrl+drag for sample clips and edges
   - Hold Ctrl while dragging sample clips or resizing clip edges to temporarily snap to grid, even when grid snapping is disabled globally.
   - Snapping applies during drag/resize operations and releases when Ctrl is released or mouse button is released.

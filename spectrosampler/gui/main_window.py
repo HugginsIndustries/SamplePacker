@@ -36,8 +36,8 @@ from spectrosampler.audio_io import (
 )
 from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.autosave import AutoSaveManager
+from spectrosampler.gui.detection_dialog import DetectionDialog
 from spectrosampler.gui.detection_manager import DetectionManager
-from spectrosampler.gui.detection_settings import DetectionSettingsPanel
 from spectrosampler.gui.diagnostics_dialog import DiagnosticsDialog
 from spectrosampler.gui.export_dialog import ExportDialog
 from spectrosampler.gui.export_models import (
@@ -71,6 +71,7 @@ from spectrosampler.gui.settings import SettingsManager
 from spectrosampler.gui.spectrogram_tiler import SpectrogramTile, SpectrogramTiler
 from spectrosampler.gui.spectrogram_widget import SpectrogramWidget
 from spectrosampler.gui.theme import ThemeManager
+from spectrosampler.gui.toolbar import ToolbarWidget
 from spectrosampler.gui.waveform_manager import WaveformData, WaveformManager
 from spectrosampler.gui.waveform_widget import WaveformWidget
 from spectrosampler.pipeline_settings import ProcessingSettings
@@ -217,11 +218,10 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self._timeline_splitter = splitter
 
-        # Settings panel (left)
-        self._settings_panel = DetectionSettingsPanel()
-        self._settings_panel.settings_changed.connect(self._on_settings_changed)
-        self._settings_panel.detect_samples_requested.connect(self._on_detect_samples)
-        splitter.addWidget(self._settings_panel)
+        # Toolbar (left)
+        self._toolbar = ToolbarWidget()
+        splitter.addWidget(self._toolbar)
+        splitter.setCollapsible(0, True)
 
         # Grid settings (stored in main window)
         self._grid_settings = GridSettings()
@@ -239,6 +239,8 @@ class MainWindow(QMainWindow):
         self._ui_refresh_timer = None
         self._pending_updates: dict[str, object] = {}
         splitter.setStretchFactor(0, 0)
+        # Set initial toolbar width (~75px, half of original)
+        splitter.setSizes([75, 1])
 
         # Timeline view (right) - use vertical splitter for editor/navigator
         editor_widget = QWidget()
@@ -809,9 +811,6 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         """Connect signals."""
-        # Settings panel
-        self._settings_panel.settings_changed.connect(self._on_settings_changed)
-
         # Spectrogram widget - operation start signals for undo
         self._spectrogram_widget.sample_drag_started.connect(self._on_sample_drag_started)
         self._spectrogram_widget.sample_resize_started.connect(self._on_sample_resize_started)
@@ -975,7 +974,14 @@ class MainWindow(QMainWindow):
             # Create pipeline wrapper
             self._active_analysis_resample_strategy = "default"
             self._pending_analysis_resample_strategy = None
-            settings = self._settings_panel.get_settings()
+            # Get settings from persisted preferences or use defaults
+            try:
+                settings = self._settings_manager.get_detection_settings()
+            except (RuntimeError, OSError) as exc:
+                logger.debug("Failed to load persisted detection settings: %s", exc, exc_info=exc)
+                settings = None
+            if settings is None:
+                settings = ProcessingSettings()
             settings.analysis_resample_strategy = self._active_analysis_resample_strategy
             # Initialize export settings
             if self._export_batch_settings:
@@ -1089,9 +1095,11 @@ class MainWindow(QMainWindow):
 
         # Collect detection settings
         detection_settings = {}
-        if self._settings_panel:
-            settings = self._settings_panel.get_settings()
+        try:
+            settings = self._settings_manager.get_detection_settings()
             detection_settings = _processing_settings_to_dict(settings)
+        except (RuntimeError, OSError) as exc:
+            logger.debug("Failed to get detection settings for project: %s", exc, exc_info=exc)
 
         # Collect export settings
         export_settings = (
@@ -1208,10 +1216,8 @@ class MainWindow(QMainWindow):
             try:
                 settings = _dict_to_processing_settings(data.detection_settings)
                 self._suppress_settings_modified = True
-                self._settings_panel.apply_settings(settings, emit_signal=False)
-                active_settings = self._settings_panel.get_settings()
-                self._apply_detection_settings(active_settings)
-                self._persist_detection_settings(active_settings)
+                self._apply_detection_settings(settings)
+                self._persist_detection_settings(settings)
                 self._suppress_settings_modified = False
             except (ValueError, TypeError, KeyError, RuntimeError) as e:
                 self._suppress_settings_modified = False
@@ -1896,19 +1902,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Processing", "Detection is already in progress.")
             return
 
-        validation_errors = self._settings_panel.get_validation_errors()
-        if validation_errors:
-            QMessageBox.warning(
-                self,
-                "Invalid Settings",
-                "Please correct the following before running detection:\n\n"
-                + "\n".join(error.message for error in validation_errors),
-            )
+        # Get current settings (from persisted or defaults)
+        try:
+            persisted_settings = self._settings_manager.get_detection_settings()
+        except (RuntimeError, OSError) as exc:
+            logger.debug("Failed to load persisted detection settings: %s", exc, exc_info=exc)
+            persisted_settings = None
+
+        # Create dialog with current settings
+        dialog = DetectionDialog(self, initial_settings=persisted_settings)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
+        # Get settings from dialog
+        updated_settings = dialog.get_settings()
 
         # Update pipeline wrapper settings
         if self._pipeline_wrapper:
-            updated_settings = self._settings_panel.get_settings()
             strategy = (
                 self._pending_analysis_resample_strategy
                 or self._active_analysis_resample_strategy
@@ -2086,11 +2097,6 @@ class MainWindow(QMainWindow):
                                 pipeline_settings.overlap_default_behavior = (
                                     behavior or "discard_duplicates"
                                 )
-                            self._settings_panel.set_overlap_preferences(
-                                False,
-                                behavior or "discard_duplicates",
-                                persist_manager=False,
-                            )
                         except (RuntimeError, ValueError) as exc:
                             logger.debug(
                                 "Failed to persist overlap dialog preference: %s", exc, exc_info=exc
@@ -2167,12 +2173,9 @@ class MainWindow(QMainWindow):
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""
-        settings = self._settings_panel.get_settings()
-        self._apply_detection_settings(settings)
-        self._persist_detection_settings(settings)
-        if not self._suppress_settings_modified:
-            self._project_modified = True
-            self._update_window_title()
+        # Settings are now managed through the dialog, so this method is no longer needed
+        # but kept for compatibility in case it's called elsewhere
+        pass
 
     def _apply_detection_settings(self, settings: ProcessingSettings) -> None:
         """Apply detection settings to dependent components."""
@@ -2266,20 +2269,19 @@ class MainWindow(QMainWindow):
 
     def _load_persisted_preferences(self) -> None:
         """Load persisted detection and export preferences."""
+        # Detection settings are now loaded when the dialog is opened
+        # Apply initial settings to dependent components
         try:
             persisted_detection = self._settings_manager.get_detection_settings()
         except (RuntimeError, OSError) as exc:
             logger.debug("Failed to load persisted detection settings: %s", exc, exc_info=exc)
             persisted_detection = None
 
-        if persisted_detection:
-            self._settings_panel.apply_settings(persisted_detection, emit_signal=False)
-
-        active_settings = self._settings_panel.get_settings()
-        self._suppress_settings_modified = True
-        self._apply_detection_settings(active_settings)
-        self._persist_detection_settings(active_settings)
-        self._suppress_settings_modified = False
+        if persisted_detection is not None:
+            self._suppress_settings_modified = True
+            self._apply_detection_settings(persisted_detection)
+            self._persist_detection_settings(persisted_detection)
+            self._suppress_settings_modified = False
 
         self._load_persisted_export_settings()
         self._load_persisted_player_preferences()

@@ -85,7 +85,7 @@ spectrosampler-gui --version          Show version and exit
 ## Guided Tour
 
 ### Workspace Layout
-- **Left panel** – Detection settings (mode, thresholds, timing rules, denoise/high/low-pass filters, auto-sample order, CPU workers).
+- **Left panel** – Toolbar with mode selection buttons (Select, Edit, Create).
 - **Top center** – Sample player: scrubbable transport, loop toggle, navigation controls, and live metadata.
 - **Waveform preview** – Time-aligned amplitude view sitting above the spectrogram with draggable splitter to resize or collapse (View → Show Waveform).
 - **Spectrogram canvas** – Zoom/pan, drag handles to edit sample bounds, create regions by dragging. Context menu adds disable/enable actions.
@@ -101,11 +101,12 @@ spectrosampler-gui --version          Show version and exit
 
 ### Running Detection
 1. Load an audio file (`Ctrl+Shift+O` or drag/drop).
-2. Pick a detector and tune thresholds/timing.
-3. Optionally configure denoise/filtering, sample spread mode, or maximum sample count (1–10,000, default 256).
-   - The panel blocks impossible combinations (for example, a minimum duration longer than the maximum) and shows a red hint explaining what to fix before detection can run.
-4. Click **Detect Samples** (`Ctrl+D`). A loading overlay tracks progress.
-5. If new detections overlap existing samples, the Overlap Resolution dialog lets you choose to discard overlaps, discard duplicates, or keep all (with “remember my choice”).
+2. Open the **Detect Samples** dialog (`Ctrl+D` or Edit → Detect Samples).
+3. Pick a detector and tune thresholds/timing.
+4. Optionally configure denoise/filtering, sample spread mode, or maximum sample count (1–10,000, default 256).
+   - The dialog blocks impossible combinations (for example, a minimum duration longer than the maximum) and shows a red hint explaining what to fix before detection can run.
+5. Click **Detect Samples** in the dialog. A loading overlay tracks progress.
+6. If new detections overlap existing samples, the Overlap Resolution dialog lets you choose to discard overlaps, discard duplicates, or keep all (with "remember my choice").
 
 ### Reviewing & Editing
 - Select samples in the spectrogram or info table (they stay in sync).
