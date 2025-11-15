@@ -11,7 +11,7 @@ from spectrosampler.export import build_sample_filename
 from spectrosampler.utils import sanitize_filename
 
 SupportedExportFormat = str
-DEFAULT_FILENAME_TEMPLATE = "{id}_{title}_{start}_{duration}"
+DEFAULT_FILENAME_TEMPLATE = "{id}_{title}_start-{start}s_duration-{duration}s"
 
 
 def _format_list(value: Iterable[str] | None) -> list[str]:
@@ -89,9 +89,18 @@ def build_template_context(
     """Construct the token context used for templating filenames and notes."""
 
     attrs = getattr(segment, "attrs", {}) or {}
-    start = float(segment.start)
-    end = float(segment.end)
-    duration = max(0.0, end - start)
+    # Calculate padded times (after padding is applied)
+    pre_pad_sec = float(pre_pad_ms) / 1000.0
+    post_pad_sec = float(post_pad_ms) / 1000.0
+    start_padded = max(0.0, float(segment.start) - pre_pad_sec)
+    end_padded = float(segment.end) + post_pad_sec
+    duration_padded = max(0.0, end_padded - start_padded)
+
+    # Original segment times (for backward compatibility if needed)
+    start_original = float(segment.start)
+    end_original = float(segment.end)
+    duration_original = max(0.0, end_original - start_original)
+
     resolved_title = title or derive_sample_title(index, segment)
     enabled = attrs.get("enabled")
     score = getattr(segment, "score", None)
@@ -99,8 +108,8 @@ def build_template_context(
     context: dict[str, Any] = {
         "basename": base_name,
         "sample_id": sample_id,
-        "id": f"{index + 1:04d}",
-        "index": index + 1,
+        "id": f"{index:04d}",  # 0-based: 0000-9999 (supports up to 10000 samples)
+        "index": index + 1,  # 1-based for backward compatibility
         "zero_index": index,
         "total": total,
         "title": resolved_title,
@@ -115,15 +124,23 @@ def build_template_context(
         "post_pad_ms": f"{post_pad_ms:.1f}",
         "pre_pad_ms_float": float(pre_pad_ms),
         "post_pad_ms_float": float(post_pad_ms),
-        "start": f"{start:.3f}",
-        "end": f"{end:.3f}",
-        "duration": f"{duration:.3f}",
-        "start_seconds": start,
-        "end_seconds": end,
-        "duration_seconds": duration,
-        "start_ms": int(round(start * 1000)),
-        "end_ms": int(round(end * 1000)),
-        "duration_ms": int(round(duration * 1000)),
+        # Padded times (after padding is applied) - these are the main tokens
+        "start": f"{start_padded:.3f}",
+        "end": f"{end_padded:.3f}",
+        "duration": f"{duration_padded:.3f}",
+        "start_seconds": start_padded,
+        "end_seconds": end_padded,
+        "duration_seconds": duration_padded,
+        "start_ms": int(round(start_padded * 1000)),
+        "end_ms": int(round(end_padded * 1000)),
+        "duration_ms": int(round(duration_padded * 1000)),
+        # Original segment times (for reference)
+        "start_original": f"{start_original:.3f}",
+        "end_original": f"{end_original:.3f}",
+        "duration_original": f"{duration_original:.3f}",
+        "start_original_seconds": start_original,
+        "end_original_seconds": end_original,
+        "duration_original_seconds": duration_original,
         "detector": segment.detector or "",
         "score": score if score is not None else "",
         "enabled": True if enabled is None else bool(enabled),

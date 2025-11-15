@@ -114,6 +114,9 @@ class MainWindow(QMainWindow):
         self._is_paused = False
         self._paused_position = 0  # milliseconds
         self._playback_stopped = False  # Flag to prevent restart after explicit stop
+        self._is_transitioning_to_new_sample = (
+            False  # Flag to prevent cleanup during sample transitions
+        )
         self._media_status_handler: Callable[[QMediaPlayer.MediaStatus], None] | None = None
         self._selected_sample_indexes: list[int] = []
         self._active_sample_index: int | None = None
@@ -2513,13 +2516,17 @@ class MainWindow(QMainWindow):
             return
 
         if 0 <= index < len(self._pipeline_wrapper.current_segments):
+            # Set the playing index IMMEDIATELY and synchronously before any async operations
+            # This ensures it's available when next/previous buttons are pressed
             self._current_playing_index = index
+
             seg = self._pipeline_wrapper.current_segments[index]
             # Update player widget to show playing sample
             self._sample_player.set_sample(seg, index, len(self._pipeline_wrapper.current_segments))
             self._spectrogram_widget.set_playback_state(index, seg.start, paused=False)
             self._waveform_widget.set_playback_state(index, seg.start, paused=False)
-            self._play_segment(seg.start, seg.end)
+            # Pass index to _play_segment to ensure it's maintained during cleanup
+            self._play_segment(seg.start, seg.end, index=index)
 
     def _disconnect_media_status_handler(self) -> None:
         """Disconnect any cached mediaStatusChanged handler without spamming warnings."""
@@ -2532,23 +2539,38 @@ class MainWindow(QMainWindow):
         finally:
             self._media_status_handler = None
 
-    def _play_segment(self, start_time: float, end_time: float) -> None:
+    def _play_segment(self, start_time: float, end_time: float, index: int | None = None) -> None:
         """Play audio segment.
 
         Args:
             start_time: Start time in seconds.
             end_time: End time in seconds.
+            index: Sample index to set as current playing index (optional, preserves existing if None).
         """
         if not self._current_audio_path or not self._current_audio_path.exists():
             return
 
         try:
+            # Set transition flag to prevent cleanup handlers from resetting _current_playing_index
+            # when we're stopping to start a new sample
+            self._is_transitioning_to_new_sample = True
+
+            # Disconnect previous handlers FIRST to prevent any pending events from interfering
+            # This ensures that if stop() triggers any events, they won't be handled by old handlers
+            self._disconnect_media_status_handler()
+
+            # Preserve or set current playing index before stopping playback
+            # This ensures the index is maintained even if stop() triggers cleanup
+            if index is not None:
+                self._current_playing_index = index
+
+            # Set playback_stopped flag to False BEFORE stopping to prevent cleanup handlers
+            # from resetting _current_playing_index when we're starting a new playback
+            self._playback_stopped = False
+
             # Stop any currently playing audio and clear source
             self._media_player.stop()
             self._media_player.setSource(QUrl())
-
-            # Disconnect previous handlers to avoid multiple connections
-            self._disconnect_media_status_handler()
 
             # Clean up previous temp file
             if self._temp_playback_file and self._temp_playback_file.exists():
@@ -2603,15 +2625,22 @@ class MainWindow(QMainWindow):
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 logger.error(f"FFmpeg extraction failed: {result.stderr}")
+                self._is_transitioning_to_new_sample = False  # Clear flag on error
                 QMessageBox.warning(
                     self, "Playback Error", f"Failed to extract audio segment:\n{result.stderr}"
                 )
                 return
 
             # Store current playing info for looping
+            # Ensure index is set even if it wasn't set before stopping
+            if index is not None:
+                self._current_playing_index = index
             self._current_playing_start = start_time
             self._current_playing_end = end_time
-            self._playback_stopped = False  # Reset stop flag when starting new playback
+            # Note: _playback_stopped was already set to False before stopping
+
+            # Clear transition flag now that we've set up the new playback
+            self._is_transitioning_to_new_sample = False
 
             # Store paused position for resume (if applicable)
             seek_position = (
@@ -2664,6 +2693,7 @@ class MainWindow(QMainWindow):
             self._media_player.setSource(url)
 
         except (subprocess.SubprocessError, OSError, RuntimeError, ValueError) as e:
+            self._is_transitioning_to_new_sample = False  # Clear flag on error
             logger.error("Failed to play segment: %s", e, exc_info=e)
             QMessageBox.warning(self, "Playback Error", f"Failed to play audio segment:\n{str(e)}")
 
@@ -2789,34 +2819,88 @@ class MainWindow(QMainWindow):
         )
 
     def _on_player_next_requested(self) -> None:
-        """Handle player next request."""
+        """Handle player next request - only changes playing sample, not selection."""
         if not self._pipeline_wrapper or not self._pipeline_wrapper.current_segments:
             return
 
-        idx = self._sample_table_view.currentIndex()
-        current_col = idx.column() if idx.isValid() else -1
-        if current_col < 0:
-            current_col = 0
+        num_segments = len(self._pipeline_wrapper.current_segments)
+        if num_segments == 0:
+            return
 
-        next_col = min(current_col + 1, len(self._pipeline_wrapper.current_segments) - 1)
-        if next_col != current_col:
-            self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, next_col))
-            self._on_sample_selected(next_col)
+        # Determine the current index: prioritize playing index, then player widget index, then selected index
+        current_index: int | None = None
+
+        # First, try to use the main window's playing index
+        if (
+            self._current_playing_index is not None
+            and 0 <= self._current_playing_index < num_segments
+        ):
+            current_index = self._current_playing_index
+        # Fall back to player widget's index if available
+        elif (
+            hasattr(self._sample_player, "_current_index")
+            and self._sample_player._current_index is not None
+        ):
+            player_index = self._sample_player._current_index
+            if 0 <= player_index < num_segments:
+                current_index = player_index
+        # Finally, fall back to selected index
+        if current_index is None:
+            idx = self._sample_table_view.currentIndex()
+            if idx.isValid() and 0 <= idx.column() < num_segments:
+                current_index = idx.column()
+            else:
+                current_index = 0
+
+        # Calculate next index
+        next_index = min(current_index + 1, num_segments - 1)
+
+        # Only play if we're actually moving to a different sample
+        if next_index != current_index:
+            # Play the next sample without changing selection
+            self._on_sample_play_requested(next_index)
 
     def _on_player_previous_requested(self) -> None:
-        """Handle player previous request."""
+        """Handle player previous request - only changes playing sample, not selection."""
         if not self._pipeline_wrapper or not self._pipeline_wrapper.current_segments:
             return
 
-        idx = self._sample_table_view.currentIndex()
-        current_col = idx.column() if idx.isValid() else -1
-        if current_col < 0:
-            current_col = len(self._pipeline_wrapper.current_segments) - 1
+        num_segments = len(self._pipeline_wrapper.current_segments)
+        if num_segments == 0:
+            return
 
-        prev_col = max(0, current_col - 1)
-        if prev_col != current_col:
-            self._sample_table_view.setCurrentIndex(self._sample_table_model.index(0, prev_col))
-            self._on_sample_selected(prev_col)
+        # Determine the current index: prioritize playing index, then player widget index, then selected index
+        current_index: int | None = None
+
+        # First, try to use the main window's playing index
+        if (
+            self._current_playing_index is not None
+            and 0 <= self._current_playing_index < num_segments
+        ):
+            current_index = self._current_playing_index
+        # Fall back to player widget's index if available
+        elif (
+            hasattr(self._sample_player, "_current_index")
+            and self._sample_player._current_index is not None
+        ):
+            player_index = self._sample_player._current_index
+            if 0 <= player_index < num_segments:
+                current_index = player_index
+        # Finally, fall back to selected index
+        if current_index is None:
+            idx = self._sample_table_view.currentIndex()
+            if idx.isValid() and 0 <= idx.column() < num_segments:
+                current_index = idx.column()
+            else:
+                current_index = num_segments - 1
+
+        # Calculate previous index
+        prev_index = max(0, current_index - 1)
+
+        # Only play if we're actually moving to a different sample
+        if prev_index != current_index:
+            # Play the previous sample without changing selection
+            self._on_sample_play_requested(prev_index)
 
     def _on_player_loop_changed(self, enabled: bool) -> None:
         """Handle player loop state change.
@@ -2895,6 +2979,11 @@ class MainWindow(QMainWindow):
 
     def _finalize_completed_playback(self) -> None:
         """Clean up state after playback ends without auto-advancing."""
+        # Don't reset _current_playing_index if we're transitioning to a new sample
+        # (e.g., when user presses Next/Previous buttons)
+        if self._is_transitioning_to_new_sample:
+            return
+
         self._sample_player.set_playing(False)
         self._current_playing_index = None
         self._current_playing_start = None

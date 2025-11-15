@@ -253,10 +253,12 @@ def test_handle_end_of_media_with_autoplay_advances(monkeypatch, tmp_path):
 
     played = []
 
-    def fake_play_segment(self, start: float, end: float) -> None:
+    def fake_play_segment(self, start: float, end: float, index: int | None = None) -> None:
         played.append((start, end))
         self._current_playing_start = start
         self._current_playing_end = end
+        if index is not None:
+            self._current_playing_index = index
 
     monkeypatch.setattr(
         window,

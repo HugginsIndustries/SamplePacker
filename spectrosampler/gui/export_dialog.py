@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import logging
+import subprocess
+import tempfile
+import uuid
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QDoubleValidator, QImage, QPainter, QPixmap
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDoubleValidator, QImage, QKeyEvent, QPainter, QPixmap
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,7 +49,11 @@ from spectrosampler.gui.export_models import (
     parse_overrides,
     render_filename_from_template,
 )
+from spectrosampler.gui.export_sample_player import ExportSamplePlayerWidget
+from spectrosampler.gui.sample_scrubber import SampleScrubber
 from spectrosampler.utils import sanitize_filename
+
+logger = logging.getLogger(__name__)
 
 AVAILABLE_EXPORT_FORMATS: tuple[str, ...] = ("wav", "flac", "mp3")
 SAMPLE_RATE_CHOICES: tuple[int, ...] = (0, 44100, 48000, 88200, 96000, 192000)
@@ -53,6 +62,43 @@ PREVIEW_SPECTROGRAM_SIZE: tuple[int, int] = (520, 220)
 PREVIEW_REFRESH_DELAY_MS = 120
 NORMALIZE_TARGET_DBFS = -0.1
 NORMALIZE_TARGET_AMPLITUDE = float(10.0 ** (NORMALIZE_TARGET_DBFS / 20.0))
+
+
+class PlaybackIndicatorLabel(QLabel):
+    """QLabel with playback position indicator overlay."""
+
+    def __init__(self, parent: QWidget | None = None):
+        """Initialize playback indicator label.
+
+        Args:
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self._playback_position: float | None = None
+
+    def set_playback_position(self, position: float | None) -> None:
+        """Set playback position for indicator (0.0 to 1.0).
+
+        Args:
+            position: Relative position (0.0 to 1.0) or None to hide indicator.
+        """
+        if self._playback_position != position:
+            self._playback_position = position
+            self.update()
+
+    def paintEvent(self, event) -> None:
+        """Override paint event to draw playback indicator."""
+        super().paintEvent(event)
+        if self._playback_position is not None and 0.0 <= self._playback_position <= 1.0:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            width = self.width()
+            height = self.height()
+            x = int(self._playback_position * width)
+            # Draw vertical line in orange
+            painter.setPen(QColor("#EF7F22"))
+            painter.drawLine(x, 0, x, height)
+            painter.end()
 
 
 class ExportDialog(QDialog):
@@ -72,7 +118,7 @@ class ExportDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Export Samples")
         self.setModal(True)
-        self.resize(1080, 720)
+        # Size will be fixed after layout is built
 
         self._segments: list[Segment] = list(segments or [])
         self._current_index: int = 0
@@ -100,6 +146,17 @@ class ExportDialog(QDialog):
         self._audio_total_frames: int | None = None
         self._audio_duration: float | None = None
         self._ensure_audio_metadata()
+
+        # Export player state
+        self._export_player: ExportSamplePlayerWidget | None = None
+        self._export_media_player: QMediaPlayer | None = None
+        self._export_audio_output: QAudioOutput | None = None
+        self._export_temp_file: Path | None = None
+        self._export_loop_enabled = False
+        self._export_auto_play_enabled = False
+        self._export_media_status_handler: Callable[[QMediaPlayer.MediaStatus], None] | None = None
+        self._playback_position_relative: float | None = None
+        self._size_locked = False
 
         self._tabs = QTabWidget()
         self._global_page = QWidget()
@@ -141,6 +198,8 @@ class ExportDialog(QDialog):
         self._apply_batch_settings_to_ui()
         self._update_navigation_state()
         self._schedule_preview_refresh()
+
+        # Size will be locked after dialog is shown to ensure layout is fully calculated
 
     # ------------------------------------------------------------------ #
     # Global tab construction and bindings
@@ -340,34 +399,51 @@ class ExportDialog(QDialog):
         header_layout.addWidget(self._sample_title_label)
 
         nav_layout = QHBoxLayout()
+        nav_layout.setSpacing(8)
         self._prev_button = QPushButton("Previous")
         self._prev_button.clicked.connect(self._on_previous_sample)
         self._next_button = QPushButton("Next")
         self._next_button.clicked.connect(self._on_next_sample)
         nav_layout.addWidget(self._prev_button)
         nav_layout.addWidget(self._next_button)
-        nav_layout.addStretch()
+
+        # Sample scrubber for quick navigation
+        self._sample_scrubber = SampleScrubber(self)
+        # Match button height
+        button_height = max(
+            self._prev_button.sizeHint().height(), self._next_button.sizeHint().height()
+        )
+        self._sample_scrubber.setMinimumHeight(button_height)
+        self._sample_scrubber.setMaximumHeight(button_height)
+        self._sample_scrubber.value_committed.connect(self._on_scrubber_value_committed)
+        self._sample_scrubber.scrubbing_cancelled.connect(self._on_scrubber_cancelled)
+        nav_layout.addWidget(self._sample_scrubber, stretch=1)
 
         previews_and_controls = QHBoxLayout()
 
         preview_column = QVBoxLayout()
-        self._spectrogram_label = QLabel("Spectrogram preview unavailable")
+        preview_column.setSpacing(4)
+        self._spectrogram_label = PlaybackIndicatorLabel("Spectrogram preview unavailable")
         self._spectrogram_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._spectrogram_label.setMinimumSize(*PREVIEW_SPECTROGRAM_SIZE)
+        # Set fixed size for spectrogram preview
+        self._spectrogram_label.setFixedSize(*PREVIEW_SPECTROGRAM_SIZE)
         self._spectrogram_label.setStyleSheet(
             "background-color: #1A1A1A; border: 1px solid #333333; color: #AAAAAA;"
         )
 
-        self._waveform_label = QLabel("Waveform preview unavailable")
+        self._waveform_label = PlaybackIndicatorLabel("Waveform preview unavailable")
         self._waveform_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._waveform_label.setMinimumSize(*PREVIEW_WAVEFORM_SIZE)
+        # Set fixed size for waveform preview
+        self._waveform_label.setFixedSize(*PREVIEW_WAVEFORM_SIZE)
         self._waveform_label.setStyleSheet(
             "background-color: #111111; border: 1px solid #333333; color: #AAAAAA;"
         )
 
         preview_column.addWidget(self._spectrogram_label)
         preview_column.addWidget(self._waveform_label)
-        previews_and_controls.addLayout(preview_column, stretch=3)
+        previews_and_controls.addLayout(preview_column)
+
+        previews_and_controls.addSpacing(12)  # Spacing between previews and controls
 
         controls_column = QVBoxLayout()
 
@@ -459,9 +535,9 @@ class ExportDialog(QDialog):
 
         overrides_group.setLayout(overrides_form)
         controls_column.addWidget(overrides_group)
-        controls_column.addStretch()
+        # Remove stretch to prevent extra spacing
 
-        previews_and_controls.addLayout(controls_column, stretch=2)
+        previews_and_controls.addLayout(controls_column)
 
         self._sample_summary_label = QLabel(
             "Select samples to review per-sample overrides and preview exports."
@@ -472,8 +548,28 @@ class ExportDialog(QDialog):
         layout.addLayout(nav_layout)
         layout.addLayout(previews_and_controls)
         layout.addWidget(self._sample_summary_label)
-        layout.addStretch()
+
+        # Export player widget
+        self._export_player = ExportSamplePlayerWidget(self)
+        self._export_player.loop_changed.connect(self._on_export_player_loop_changed)
+        self._export_player.auto_play_changed.connect(self._on_export_player_auto_play_changed)
+        self._export_player.play_requested.connect(self._on_export_player_play)
+        self._export_player.pause_requested.connect(self._on_export_player_pause)
+        self._export_player.stop_requested.connect(self._on_export_player_stop)
+        self._export_player.seek_requested.connect(self._on_export_player_seek)
+        layout.addWidget(self._export_player)
+
         self._samples_page.setLayout(layout)
+
+        # Initialize media player and audio output
+        self._export_media_player = QMediaPlayer(self)
+        self._export_audio_output = QAudioOutput(self)
+        self._export_media_player.setAudioOutput(self._export_audio_output)
+        self._export_media_player.positionChanged.connect(self._on_export_media_position_changed)
+        self._export_media_player.durationChanged.connect(self._on_export_media_duration_changed)
+        self._export_media_player.playbackStateChanged.connect(
+            self._on_export_media_playback_state_changed
+        )
 
     # ------------------------------------------------------------------ #
     # UI lifecycle helpers
@@ -579,6 +675,9 @@ class ExportDialog(QDialog):
             self._sample_title_label.setText("")
             self._prev_button.setEnabled(False)
             self._next_button.setEnabled(False)
+            if hasattr(self, "_sample_scrubber"):
+                self._sample_scrubber.setEnabled(False)
+                self._sample_scrubber.set_segments([])
             self._sample_summary_label.setText(
                 "No samples selected for export. Run detection or select clips to enable preview."
             )
@@ -592,6 +691,11 @@ class ExportDialog(QDialog):
         self._sample_position_label.setText(f"Sample {self._current_index + 1} of {total}")
         self._prev_button.setEnabled(self._current_index > 0)
         self._next_button.setEnabled(self._current_index < total - 1)
+        # Update scrubber
+        if hasattr(self, "_sample_scrubber"):
+            self._sample_scrubber.set_segments(self._segments)
+            self._sample_scrubber.set_current_index(self._current_index)
+            self._sample_scrubber.setEnabled(True)
 
         segment = self._segments[self._current_index]
         sample_id = compute_sample_id(self._current_index, segment)
@@ -665,11 +769,15 @@ class ExportDialog(QDialog):
     def _on_padding_changed(self) -> None:
         self._batch_settings.pre_pad_ms = float(self._pre_pad_spin.value())
         self._batch_settings.post_pad_ms = float(self._post_pad_spin.value())
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
     def _on_normalize_toggled(self, state: int) -> None:
         self._batch_settings.normalize = state == Qt.CheckState.Checked
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -681,6 +789,8 @@ class ExportDialog(QDialog):
         self._toggle_bandpass_fields(enabled)
         if enabled:
             self._on_bandpass_values_changed()
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
 
     def _on_bandpass_values_changed(self) -> None:
@@ -690,6 +800,8 @@ class ExportDialog(QDialog):
         high_text = self._bandpass_high_edit.text().strip()
         self._batch_settings.bandpass_low_hz = float(low_text) if low_text else None
         self._batch_settings.bandpass_high_hz = float(high_text) if high_text else None
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -754,6 +866,8 @@ class ExportDialog(QDialog):
         if not sample_id:
             return
         self._set_override_field(sample_id, "pre_pad_ms", float(value), prune=False)
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -768,6 +882,8 @@ class ExportDialog(QDialog):
             )
         else:
             self._set_override_field(sample_id, "post_pad_ms", None, prune=True)
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -780,6 +896,8 @@ class ExportDialog(QDialog):
         if not sample_id:
             return
         self._set_override_field(sample_id, "post_pad_ms", float(value), prune=False)
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -795,6 +913,8 @@ class ExportDialog(QDialog):
             self._set_override_field(sample_id, "normalize", True, prune=False)
         else:  # Disabled
             self._set_override_field(sample_id, "normalize", False, prune=False)
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
         self._refresh_current_filename_preview()
 
@@ -834,6 +954,8 @@ class ExportDialog(QDialog):
         high_val = float(high_text) if high_text else None
         self._set_override_field(sample_id, "bandpass_low_hz", low_val, prune=False)
         self._set_override_field(sample_id, "bandpass_high_hz", high_val, prune=False)
+        # Stop playback when settings change
+        self._stop_export_playback()
         self._schedule_preview_refresh()
 
     def _on_override_title_toggled(self, state: int) -> None:
@@ -930,15 +1052,90 @@ class ExportDialog(QDialog):
         if self._current_index <= 0:
             return
         self._save_current_sample_state()
+        # Stop playback when navigating
+        self._stop_export_playback()
+        # Save loop and auto-play settings
+        if self._export_player:
+            self._export_loop_enabled = self._export_player.is_looping()
+            self._export_auto_play_enabled = self._export_player.is_auto_play()
         self._current_index -= 1
         self._update_navigation_state()
+        # Restore loop and auto-play settings
+        if self._export_player:
+            self._export_player.set_looping(self._export_loop_enabled)
+            self._export_player.set_auto_play(self._export_auto_play_enabled)
+        # Auto-play if enabled
+        if self._export_auto_play_enabled:
+            self._play_current_sample()
 
     def _on_next_sample(self) -> None:
         if self._current_index >= len(self._segments) - 1:
             return
         self._save_current_sample_state()
+        # Stop playback when navigating
+        self._stop_export_playback()
+        # Save loop and auto-play settings
+        if self._export_player:
+            self._export_loop_enabled = self._export_player.is_looping()
+            self._export_auto_play_enabled = self._export_player.is_auto_play()
         self._current_index += 1
         self._update_navigation_state()
+        # Restore loop and auto-play settings
+        if self._export_player:
+            self._export_player.set_looping(self._export_loop_enabled)
+            self._export_player.set_auto_play(self._export_auto_play_enabled)
+        # Auto-play if enabled
+        if self._export_auto_play_enabled:
+            self._play_current_sample()
+
+    def _on_scrubber_value_committed(self, index: int) -> None:
+        """Handle scrubber value commit (mouse release).
+
+        Args:
+            index: Selected sample index (0-based).
+        """
+        if index < 0 or index >= len(self._segments):
+            return
+        if index == self._current_index:
+            return
+
+        self._save_current_sample_state()
+        # Stop playback when navigating
+        self._stop_export_playback()
+        # Save loop and auto-play settings
+        if self._export_player:
+            self._export_loop_enabled = self._export_player.is_looping()
+            self._export_auto_play_enabled = self._export_player.is_auto_play()
+        self._current_index = index
+        self._update_navigation_state()
+        # Restore loop and auto-play settings
+        if self._export_player:
+            self._export_player.set_looping(self._export_loop_enabled)
+            self._export_player.set_auto_play(self._export_auto_play_enabled)
+        # Auto-play if enabled
+        if self._export_auto_play_enabled:
+            self._play_current_sample()
+
+    def _on_scrubber_cancelled(self) -> None:
+        """Handle scrubber cancellation (ESC key)."""
+        # Scrubber already restored its value, just ensure UI is in sync
+        if hasattr(self, "_sample_scrubber"):
+            self._sample_scrubber.set_current_index(self._current_index)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Override keyPressEvent to handle ESC for scrubber cancellation.
+
+        Args:
+            event: Key event.
+        """
+        # Handle ESC key to cancel scrubber if scrubbing (fallback if scrubber doesn't have focus)
+        if event.key() == Qt.Key.Key_Escape and hasattr(self, "_sample_scrubber"):
+            if self._sample_scrubber.is_scrubbing():
+                # Cancel scrubbing directly
+                self._sample_scrubber.cancel_scrubbing()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     # ------------------------------------------------------------------ #
     # Dialog acceptance / results
@@ -959,8 +1156,37 @@ class ExportDialog(QDialog):
                     f"Unable to create or access the chosen export folder:\n{exc}",
                 )
                 return
+        # Clean up before accepting
+        self._stop_export_playback()
         self.export_requested.emit()
         self.accept()
+
+    def reject(self) -> None:
+        """Override reject to clean up playback resources."""
+        self._stop_export_playback()
+        super().reject()
+
+    def showEvent(self, event) -> None:
+        """Override showEvent to lock dialog size after layout is calculated."""
+        super().showEvent(event)
+        # Lock window size to prevent resizing
+        # Use single-shot timer to lock size after first paint (avoids flicker)
+        if not self._size_locked:
+            QTimer.singleShot(0, self._lock_dialog_size)
+
+    def _lock_dialog_size(self) -> None:
+        """Lock the dialog to its calculated size to prevent resizing."""
+        if not self._size_locked:
+            # Adjust size to fit content, then lock it
+            self.adjustSize()
+            calculated_size = self.size()
+            self.setFixedSize(calculated_size)
+            self._size_locked = True
+
+    def closeEvent(self, event) -> None:
+        """Override closeEvent to clean up playback resources."""
+        self._stop_export_playback()
+        super().closeEvent(event)
 
     def should_persist_defaults(self) -> bool:
         """Return True when the user asked to persist global settings."""
@@ -1492,3 +1718,331 @@ class ExportDialog(QDialog):
         painter.drawRect(0, 0, width - 1, height - 1)
         painter.end()
         return pixmap
+
+    # ------------------------------------------------------------------ #
+    # Export player playback logic
+    # ------------------------------------------------------------------ #
+
+    def _play_current_sample(self) -> None:
+        """Play current sample with all export settings applied."""
+        segment = self._current_segment()
+        sample_id = self._current_sample_id()
+        if segment is None or sample_id is None or self._audio_path is None:
+            return
+
+        # Stop any currently playing audio
+        self._stop_export_playback()
+
+        # Get effective settings (global + overrides)
+        effective = self._effective_settings(sample_id)
+        pre_pad_ms = float(effective.get("pre_pad_ms", 0.0) or 0.0)
+        post_pad_ms = float(effective.get("post_pad_ms", 0.0) or 0.0)
+
+        # Calculate padded time window
+        start_sec = max(0.0, segment.start - (pre_pad_ms / 1000.0))
+        end_sec = segment.end + (post_pad_ms / 1000.0)
+        if self._audio_duration is not None:
+            end_sec = min(self._audio_duration, end_sec)
+        duration = max(0.0, end_sec - start_sec)
+        if duration <= 0:
+            return
+
+        # Get export settings
+        sample_rate = self._batch_settings.sample_rate_hz or 0
+        bit_depth = self._batch_settings.bit_depth
+        channels = self._batch_settings.channels
+        normalize = bool(effective.get("normalize", False))
+
+        # Handle bandpass (convert sentinel -1.0 to None)
+        bandpass_low_hz = effective.get("bandpass_low_hz")
+        bandpass_high_hz = effective.get("bandpass_high_hz")
+        if bandpass_low_hz == -1.0:
+            bandpass_low_hz = None
+        if bandpass_high_hz == -1.0:
+            bandpass_high_hz = None
+
+        try:
+            # Create temporary file
+            temp_dir = Path(tempfile.gettempdir())
+            unique_id = uuid.uuid4().hex
+            self._export_temp_file = temp_dir / f"spectrosampler_export_playback_{unique_id}.wav"
+
+            # Build FFmpeg command with all export settings
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-ss",
+                f"{start_sec:.6f}",
+                "-i",
+                str(self._audio_path),
+                "-t",
+                f"{duration:.6f}",
+            ]
+
+            # Build audio filters
+            filters: list[str] = []
+
+            # Bandpass filtering
+            if bandpass_low_hz is not None or bandpass_high_hz is not None:
+                if bandpass_low_hz is not None and bandpass_high_hz is not None:
+                    filters.append(f"highpass=f={bandpass_low_hz}")
+                    filters.append(f"lowpass=f={bandpass_high_hz}")
+                elif bandpass_low_hz is not None:
+                    filters.append(f"highpass=f={bandpass_low_hz}")
+                elif bandpass_high_hz is not None:
+                    filters.append(f"lowpass=f={bandpass_high_hz}")
+
+            # Normalization (two-pass peak normalization)
+            if normalize:
+                # First pass: detect peak
+                volumedetect_filters = filters.copy()
+                volumedetect_filters.append("volumedetect")
+                volumedetect_cmd = cmd + ["-af", ",".join(volumedetect_filters), "-f", "null", "-"]
+                try:
+                    result = subprocess.run(
+                        volumedetect_cmd, capture_output=True, text=True, check=True
+                    )
+                    peak_db = None
+                    for line in result.stderr.split("\n"):
+                        if "max_volume:" in line:
+                            try:
+                                peak_db = float(line.split("max_volume:")[1].split("dB")[0].strip())
+                                break
+                            except (ValueError, IndexError):
+                                pass
+                    if peak_db is None:
+                        peak_db = 0.0
+                    target_db = -0.1
+                    gain_db = target_db - peak_db
+                    if abs(gain_db) > 0.01:
+                        filters.append(f"volume={gain_db}dB")
+                except subprocess.CalledProcessError:
+                    logger.warning("Failed to detect peak level, skipping normalization")
+                    normalize = False
+
+            # Apply filters
+            if filters:
+                cmd += ["-af", ",".join(filters)]
+
+            # Sample rate
+            if sample_rate and sample_rate > 0:
+                cmd += ["-ar", str(sample_rate)]
+
+            # Bit depth
+            if bit_depth:
+                sample_fmt = {"16": "s16", "24": "s32", "32f": "fltp"}.get(bit_depth)
+                if sample_fmt:
+                    cmd += ["-sample_fmt", sample_fmt]
+
+            # Channels
+            if channels:
+                cmd += ["-ac", "1" if channels == "mono" else "2"]
+
+            # Output format
+            cmd += ["-f", "wav", str(self._export_temp_file)]
+
+            # Run FFmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"FFmpeg extraction failed: {result.stderr}")
+                QMessageBox.warning(
+                    self, "Playback Error", f"Failed to extract audio segment:\n{result.stderr}"
+                )
+                return
+
+            # Load into media player
+            if self._export_media_player is None:
+                return
+
+            url = QUrl.fromLocalFile(str(self._export_temp_file))
+            self._export_media_player.setSource(url)
+
+            # Wait for media to load before playing
+            def on_media_status_changed(status):
+                if self._export_media_player is None:
+                    return
+                if status == QMediaPlayer.MediaStatus.LoadedMedia:
+                    self._export_media_player.play()
+                    if self._export_player:
+                        self._export_player.set_playing(True)
+                elif status == QMediaPlayer.MediaStatus.EndOfMedia:
+                    self._handle_export_end_of_media()
+
+            # Disconnect previous handler
+            if self._export_media_status_handler:
+                try:
+                    self._export_media_player.mediaStatusChanged.disconnect(
+                        self._export_media_status_handler
+                    )
+                except TypeError:
+                    pass
+
+            # Connect new handler
+            self._export_media_player.mediaStatusChanged.connect(on_media_status_changed)
+            self._export_media_status_handler = on_media_status_changed
+
+        except (subprocess.SubprocessError, OSError, RuntimeError, ValueError) as e:
+            logger.error("Failed to play sample: %s", e, exc_info=e)
+            QMessageBox.warning(self, "Playback Error", f"Failed to play audio segment:\n{str(e)}")
+
+    def _stop_export_playback(self) -> None:
+        """Stop export playback and clean up."""
+        if self._export_media_player:
+            self._export_media_player.stop()
+            self._export_media_player.setSource(QUrl())
+        if self._export_player:
+            self._export_player.set_playing(False)
+            self._export_player.set_position(0, self._export_player._duration)
+        self._cleanup_export_temp_file()
+        # Update preview indicators
+        self._spectrogram_label.update()
+        self._waveform_label.update()
+
+    def _cleanup_export_temp_file(self) -> None:
+        """Clean up temporary playback file."""
+        if self._export_temp_file and self._export_temp_file.exists():
+            try:
+                self._export_temp_file.unlink()
+            except OSError as exc:
+                logger.debug(
+                    "Failed to remove temporary playback file %s: %s", self._export_temp_file, exc
+                )
+            self._export_temp_file = None
+
+    def _handle_export_end_of_media(self) -> None:
+        """Handle end of media for export player."""
+        if self._export_loop_enabled:
+            # Loop playback
+            if self._export_media_player:
+                self._export_media_player.setPosition(0)
+                self._export_media_player.play()
+        else:
+            # Stop playback
+            self._stop_export_playback()
+
+    def _on_export_player_play(self) -> None:
+        """Handle play button click."""
+        if self._export_media_player and self._export_media_player.source().isValid():
+            # Resume if paused, otherwise start new playback
+            if self._export_media_player.playbackState() == QMediaPlayer.PlaybackState.PausedState:
+                self._export_media_player.play()
+            else:
+                self._play_current_sample()
+        else:
+            self._play_current_sample()
+
+    def _on_export_player_pause(self) -> None:
+        """Handle pause button click."""
+        if self._export_media_player:
+            self._export_media_player.pause()
+            if self._export_player:
+                self._export_player.set_playing(False)
+
+    def _on_export_player_stop(self) -> None:
+        """Handle stop button click."""
+        self._stop_export_playback()
+
+    def _on_export_player_seek(self, position_ms: int) -> None:
+        """Handle seek request.
+
+        Args:
+            position_ms: Position in milliseconds.
+        """
+        if self._export_media_player:
+            self._export_media_player.setPosition(position_ms)
+
+    def _on_export_player_loop_changed(self, enabled: bool) -> None:
+        """Handle loop checkbox change.
+
+        Args:
+            enabled: True if looping is enabled.
+        """
+        self._export_loop_enabled = enabled
+
+    def _on_export_player_auto_play_changed(self, enabled: bool) -> None:
+        """Handle auto-play checkbox change.
+
+        Args:
+            enabled: True if auto-play is enabled.
+        """
+        self._export_auto_play_enabled = enabled
+
+    def _on_export_media_position_changed(self, position_ms: int) -> None:
+        """Handle media player position change.
+
+        Args:
+            position_ms: Position in milliseconds.
+        """
+        if self._export_player and not self._export_player._is_scrubbing:
+            duration_ms = self._export_media_player.duration() if self._export_media_player else 0
+            self._export_player.set_position(position_ms, duration_ms)
+            # Update preview indicators
+            self._update_playback_indicators(position_ms, duration_ms)
+
+    def _on_export_media_duration_changed(self, duration_ms: int) -> None:
+        """Handle media player duration change.
+
+        Args:
+            duration_ms: Duration in milliseconds.
+        """
+        if self._export_player:
+            position_ms = self._export_media_player.position() if self._export_media_player else 0
+            self._export_player.set_position(position_ms, duration_ms)
+
+    def _on_export_media_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
+        """Handle media player playback state change.
+
+        Args:
+            state: Current playback state.
+        """
+        if self._export_player:
+            is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+            self._export_player.set_playing(is_playing)
+
+    def _update_playback_indicators(self, position_ms: int, duration_ms: int) -> None:
+        """Update playback indicators on preview labels.
+
+        Args:
+            position_ms: Current playback position in milliseconds.
+            duration_ms: Total duration in milliseconds.
+        """
+        if duration_ms <= 0:
+            self._playback_position_relative = None
+            if isinstance(self._spectrogram_label, PlaybackIndicatorLabel):
+                self._spectrogram_label.set_playback_position(None)
+            if isinstance(self._waveform_label, PlaybackIndicatorLabel):
+                self._waveform_label.set_playback_position(None)
+            return
+
+        segment = self._current_segment()
+        sample_id = self._current_sample_id()
+        if segment is None or sample_id is None:
+            return
+
+        # Calculate relative position within padded sample window
+        effective = self._effective_settings(sample_id)
+        pre_pad_ms = float(effective.get("pre_pad_ms", 0.0) or 0.0)
+        post_pad_ms = float(effective.get("post_pad_ms", 0.0) or 0.0)
+
+        start_sec = max(0.0, segment.start - (pre_pad_ms / 1000.0))
+        end_sec = segment.end + (post_pad_ms / 1000.0)
+        if self._audio_duration is not None:
+            end_sec = min(self._audio_duration, end_sec)
+        padded_duration = max(0.0, end_sec - start_sec)
+
+        if padded_duration <= 0:
+            self._playback_position_relative = None
+        else:
+            # Position relative to padded window (0.0 to 1.0)
+            position_sec = position_ms / 1000.0
+            self._playback_position_relative = position_sec / padded_duration
+            self._playback_position_relative = max(0.0, min(1.0, self._playback_position_relative))
+
+        # Update indicator labels
+        if isinstance(self._spectrogram_label, PlaybackIndicatorLabel):
+            self._spectrogram_label.set_playback_position(self._playback_position_relative)
+        if isinstance(self._waveform_label, PlaybackIndicatorLabel):
+            self._waveform_label.set_playback_position(self._playback_position_relative)

@@ -34,8 +34,12 @@ def test_render_filename_supports_new_tokens() -> None:
         pre_pad_ms=25.0,
         post_pad_ms=10.0,
     )
-    # Index=2 should map to id "0003" (1-based, zero padded) and values formatted to 3 decimals.
-    assert rendered == "0003_Lead Vox_0.500_0.750"
+    # Index=2 should map to id "0002" (0-based, zero padded) and values formatted to 3 decimals.
+    # With pre_pad_ms=25.0 and post_pad_ms=10.0:
+    # start_padded = max(0, 0.5 - 0.025) = 0.475
+    # end_padded = 1.25 + 0.010 = 1.26
+    # duration_padded = 1.26 - 0.475 = 0.785
+    assert rendered == "0002_Lead Vox_0.475_0.785"
 
 
 def test_template_context_exposes_metadata_and_sample_fields() -> None:
@@ -68,7 +72,7 @@ def test_template_context_exposes_metadata_and_sample_fields() -> None:
         channels="stereo",
     )
 
-    assert context["id"] == "0001"
+    assert context["id"] == "0000"  # 0-based indexing
     assert context["title"] == "sample"
     assert context["detector"] == "flux"
     # Attribute tokens should be namespaced with attr_ prefix.
@@ -78,9 +82,10 @@ def test_template_context_exposes_metadata_and_sample_fields() -> None:
         "Title={title}; Artist={artist}; Start={start}; Detector={detector}; Enabled={enabled}",
         context,
     )
+    # With pre_pad_ms=100.0, start_padded = max(0, 1.0 - 0.1) = 0.9
     assert (
         rendered_notes
-        == "Title=sample; Artist=SpectroSampler; Start=1.000; Detector=flux; Enabled=False"
+        == "Title=sample; Artist=SpectroSampler; Start=0.900; Detector=flux; Enabled=False"
     )
 
     default_name = render_filename_from_template(
@@ -102,4 +107,6 @@ def test_template_context_exposes_metadata_and_sample_fields() -> None:
         bit_depth="24",
         channels="stereo",
     )
-    assert default_name.startswith("0001_sample_1.000_0.500")
+    # With 0-based indexing, id="0000", and padded times: start=0.900, duration=0.650
+    # Default template is "{id}_{title}_start-{start}s_duration-{duration}s"
+    assert default_name.startswith("0000_sample_start-0.900s_duration-0.650s")
