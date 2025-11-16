@@ -1,6 +1,7 @@
 """DAW-style spectrogram widget with zoom, pan, and sample markers."""
 
 import logging
+import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +18,11 @@ from spectrosampler.detectors.base import Segment
 from spectrosampler.gui.grid_manager import GridManager
 from spectrosampler.gui.spectrogram_tiler import SpectrogramTiler
 from spectrosampler.gui.toolbar import ToolMode
+
+# Suppress matplotlib ticker warnings about too many ticks
+# Despite setting NullLocator, matplotlib may still attempt tick generation internally
+# before checking the locator, causing harmless warnings during detection
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib.ticker")
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +156,12 @@ class SpectrogramWidget(QWidget):
         self._figure = Figure(figsize=(10, 6), facecolor=self._to_rgba(fig_bg))
         self._canvas = FigureCanvasQTAgg(self._figure)
         self._ax = self._figure.add_subplot(111, facecolor=self._to_rgba(axes_bg))
+        # Set locators immediately to prevent tick generation warnings
+        # This must be done before any set_xlim/set_ylim calls
+        self._ax.xaxis.set_major_locator(NullLocator())
+        self._ax.xaxis.set_minor_locator(NullLocator())
+        self._ax.yaxis.set_major_locator(NullLocator())
+        self._ax.yaxis.set_minor_locator(NullLocator())
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._canvas)
@@ -708,6 +720,12 @@ class SpectrogramWidget(QWidget):
         self._segment_artists.clear()
 
         major_positions: list[float] = []
+
+        # Ensure locators are set before limit operations to prevent tick generation warnings
+        self._ax.xaxis.set_major_locator(NullLocator())
+        self._ax.xaxis.set_minor_locator(NullLocator())
+        self._ax.yaxis.set_major_locator(NullLocator())
+        self._ax.yaxis.set_minor_locator(NullLocator())
 
         # Apply current limits upfront so downstream calculations use fresh values
         self._ax.set_xlim(self._start_time, self._end_time)

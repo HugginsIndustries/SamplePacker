@@ -402,12 +402,12 @@ class MainWindow(QMainWindow):
 
         # Set initial sizes
         splitter.setSizes([300, 800])
-        waveform_default = max(40, self._navigator.minimumHeight() // 2)
+        waveform_default = 200  # Independent of navigator size
         self._set_player_splitter_sizes(
             [120, waveform_default, 420]
         )  # Player, Waveform, Spectrogram
         editor_splitter.setSizes([600, 100])
-        self._main_splitter.setSizes([600, table_height])
+        self._main_splitter.setSizes([600, 0])  # Info table hidden by default
 
         # Store initial sizes for restore
         self._player_initial_size = 120
@@ -638,19 +638,19 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
-        # Hide Info Table action
-        self._hide_info_action = QAction("Hide &Info Table", self)
-        self._hide_info_action.setCheckable(True)
-        self._hide_info_action.setChecked(False)
-        self._hide_info_action.triggered.connect(self._on_toggle_info_table)
-        view_menu.addAction(self._hide_info_action)
+        # Show Info Table action
+        self._show_info_action = QAction("Show &Info Table", self)
+        self._show_info_action.setCheckable(True)
+        self._show_info_action.setChecked(False)
+        self._show_info_action.triggered.connect(self._on_toggle_info_table)
+        view_menu.addAction(self._show_info_action)
 
-        # Hide Player action
-        self._hide_player_action = QAction("Hide &Player", self)
-        self._hide_player_action.setCheckable(True)
-        self._hide_player_action.setChecked(False)
-        self._hide_player_action.triggered.connect(self._on_toggle_player)
-        view_menu.addAction(self._hide_player_action)
+        # Show Player action
+        self._show_player_action = QAction("Show &Player", self)
+        self._show_player_action.setCheckable(True)
+        self._show_player_action.setChecked(True)
+        self._show_player_action.triggered.connect(self._on_toggle_player)
+        view_menu.addAction(self._show_player_action)
 
         self._show_waveform_action = QAction("Show &Waveform", self)
         self._show_waveform_action.setCheckable(True)
@@ -758,14 +758,9 @@ class MainWindow(QMainWindow):
 
         settings_menu.addSeparator()
 
-        # Recent files management
-        clear_recent_projects_menu_action = QAction("Clear &Recent Projects", self)
-        clear_recent_projects_menu_action.triggered.connect(self._on_clear_recent_projects)
-        settings_menu.addAction(clear_recent_projects_menu_action)
-
-        clear_recent_audio_files_menu_action = QAction("Clear Recent &Audio Files", self)
-        clear_recent_audio_files_menu_action.triggered.connect(self._on_clear_recent_audio_files)
-        settings_menu.addAction(clear_recent_audio_files_menu_action)
+        reset_all_settings_action = QAction("Reset All To &Default", self)
+        reset_all_settings_action.triggered.connect(self._on_reset_all_settings)
+        settings_menu.addAction(reset_all_settings_action)
 
         help_menu = menubar.addMenu("&Help")
 
@@ -1014,6 +1009,7 @@ class MainWindow(QMainWindow):
 
             # Update UI
             duration = audio_info.get("duration", 0.0)
+            sample_rate = audio_info.get("sample_rate", 0)
             self._spectrogram_widget.set_duration(duration)
             # Ensure waveform duration stays in sync
             self._waveform_widget.set_duration(duration)
@@ -1030,14 +1026,15 @@ class MainWindow(QMainWindow):
 
             # Start overview generation in background thread
             self._overview_manager.start_generation(
-                self._tiler, file_path, duration, sample_rate=None
+                self._tiler, file_path, duration, sample_rate=sample_rate
             )
             self._waveform_manager.start_generation(file_path)
             # Note: Overview will be applied to UI via _on_overview_finished signal
 
-            # Update frequency range
-            fmin = settings.hp
-            fmax = settings.lp
+            # Set frequency range to full audio range (not limited by detection settings)
+            # By default, show full frequency range up to Nyquist frequency (sample_rate / 2)
+            fmin = 0.0
+            fmax = (sample_rate / 2.0) if sample_rate > 0 else None
             self._spectrogram_widget.set_frequency_range(fmin, fmax)
             self._spectrogram_widget.set_audio_path(file_path)
             self._tiler.fmin = fmin
@@ -1327,9 +1324,9 @@ class MainWindow(QMainWindow):
                         self._main_splitter.setSizes(int_sizes)
                         if len(int_sizes) > 1 and int_sizes[1] > 0:
                             self._info_table_initial_size = int_sizes[1]
-                        if hasattr(self, "_hide_info_action"):
-                            self._hide_info_action.setChecked(
-                                int_sizes[1] == 0 if len(int_sizes) > 1 else False
+                        if hasattr(self, "_show_info_action"):
+                            self._show_info_action.setChecked(
+                                int_sizes[1] > 0 if len(int_sizes) > 1 else False
                             )
                 except (ValueError, TypeError, AttributeError) as exc:
                     logger.debug("Failed to restore main splitter sizes: %s", exc, exc_info=exc)
@@ -1341,32 +1338,34 @@ class MainWindow(QMainWindow):
                         self._set_player_splitter_sizes(int_sizes)
                         if int_sizes and int_sizes[0] > 0:
                             self._player_initial_size = int_sizes[0]
-                        if hasattr(self, "_hide_player_action"):
-                            self._hide_player_action.setChecked(
-                                int_sizes[0] == 0 if int_sizes else False
+                        if hasattr(self, "_show_player_action"):
+                            self._show_player_action.setChecked(
+                                int_sizes[0] > 0 if int_sizes else True
                             )
                 except (ValueError, TypeError, AttributeError) as exc:
                     logger.debug("Failed to restore player splitter sizes: %s", exc, exc_info=exc)
 
                 # Restore panel visibility flags
-                info_visible = getattr(data.ui_state, "info_table_visible", True)
+                info_visible = getattr(data.ui_state, "info_table_visible", False)
                 player_visible = getattr(data.ui_state, "player_visible", True)
                 waveform_visible = getattr(data.ui_state, "waveform_visible", True)
+                # Apply visibility, but sync menu actions based on actual splitter sizes
                 self._sample_table_view.setVisible(bool(info_visible))
                 self._sample_player.setVisible(bool(player_visible))
                 self._waveform_widget.setVisible(bool(waveform_visible))
 
-                if hasattr(self, "_hide_info_action"):
-                    # Keep action in sync with actual visibility/sizes
+                # Sync menu actions after all geometry is restored
+                # Check actual splitter sizes, not just visibility flags
+                if hasattr(self, "_show_info_action"):
                     sizes = self._main_splitter.sizes()
-                    self._hide_info_action.setChecked(
-                        (sizes[1] if len(sizes) > 1 else 0) == 0 or not bool(info_visible)
-                    )
-                if hasattr(self, "_hide_player_action"):
+                    # Action is checked if info table is actually visible (size > 0)
+                    actual_visible = (sizes[1] if len(sizes) > 1 else 0) > 0
+                    self._show_info_action.setChecked(actual_visible)
+                if hasattr(self, "_show_player_action"):
                     sizes = self._player_spectro_splitter.sizes()
-                    self._hide_player_action.setChecked(
-                        (sizes[0] if sizes else 0) == 0 or not bool(player_visible)
-                    )
+                    # Action is checked if player is actually visible (size > 0)
+                    actual_visible = (sizes[0] if sizes else 0) > 0
+                    self._show_player_action.setChecked(actual_visible)
                 if hasattr(self, "_show_waveform_action"):
                     sizes = self._player_spectro_splitter.sizes()
                     if bool(waveform_visible):
@@ -1680,9 +1679,17 @@ class MainWindow(QMainWindow):
             if isinstance(sizes, list) and len(sizes) >= 2:
                 try:
                     sizes_int = [int(s) if s else 0 for s in sizes]
+                    # Ensure toolbar (first widget) is at minimum width if size is too small
+                    toolbar_min_width = self._toolbar.minimumWidth()
+                    if sizes_int[0] < toolbar_min_width:
+                        sizes_int[0] = toolbar_min_width
                     self._timeline_splitter.setSizes(sizes_int)
                 except (ValueError, TypeError):
                     pass
+        else:
+            # No saved size, use minimum width for toolbar and reasonable size for editor
+            toolbar_min_width = self._toolbar.minimumWidth()
+            self._timeline_splitter.setSizes([toolbar_min_width, 800])
 
         if geometry.get("playerSplitterSizes"):
             sizes = geometry["playerSplitterSizes"]
@@ -1717,6 +1724,17 @@ class MainWindow(QMainWindow):
         else:
             waveform_visible = True
 
+        # Sync menu actions with actual splitter sizes after geometry restoration
+        # This ensures menu actions reflect actual visibility, not just saved flags
+        if hasattr(self, "_show_info_action"):
+            sizes = self._main_splitter.sizes()
+            actual_visible = (sizes[1] if len(sizes) > 1 else 0) > 0
+            self._show_info_action.setChecked(actual_visible)
+        if hasattr(self, "_show_player_action"):
+            sizes = self._player_spectro_splitter.sizes()
+            actual_visible = (sizes[0] if sizes else 0) > 0
+            self._show_player_action.setChecked(actual_visible)
+
         sizes = self._player_spectro_splitter.sizes()
         if len(sizes) >= 3:
             total = sum(sizes)
@@ -1741,7 +1759,11 @@ class MainWindow(QMainWindow):
                         [sizes[0], collapsed, max(1, total - sizes[0] - collapsed)]
                     )
             self._waveform_widget.setVisible(waveform_visible)
-            self._show_waveform_action.setChecked(waveform_visible)
+            # Sync waveform action with actual splitter size after sizes are set
+            sizes = self._player_spectro_splitter.sizes()
+            if len(sizes) >= 3:
+                actual_visible = sizes[1] > self._waveform_collapsed_size
+                self._show_waveform_action.setChecked(actual_visible)
 
     def _save_window_geometry(self) -> None:
         """Save window geometry to settings."""
@@ -1817,6 +1839,142 @@ class MainWindow(QMainWindow):
         """Handle clear recent audio files action."""
         self._settings_manager.clear_recent_audio_files()
         self._update_recent_files_menu()
+
+    def _on_reset_all_settings(self) -> None:
+        """Handle reset all settings to default action."""
+        reply = QMessageBox.question(
+            self,
+            "Reset All Settings",
+            "This will clear all saved settings and restore defaults.\n\n"
+            "This includes:\n"
+            "- Detection settings\n"
+            "- Export settings\n"
+            "- Auto-save preferences\n"
+            "- Theme preference\n"
+            "- Window layout\n"
+            "- All other preferences\n\n"
+            "Note: Recent projects and audio files will be preserved.\n\n"
+            "This action cannot be undone. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Clear all persisted settings
+        self._settings_manager.clear_all_settings()
+
+        # Reload defaults
+        # Detection settings - create new with defaults
+        default_detection = ProcessingSettings()
+        self._suppress_settings_modified = True
+        self._apply_detection_settings(default_detection)
+        self._persist_detection_settings(default_detection)
+        self._suppress_settings_modified = False
+
+        # Export settings - create new with defaults
+        self._export_batch_settings = ExportBatchSettings()
+        self._export_overrides = []
+        self._apply_export_settings_to_pipeline()
+
+        # Theme - reset to system default
+        self._theme_mode = "system"
+        self._apply_theme_mode("system", persist=False)
+
+        # Auto-save - reset to defaults (enabled, 5 minutes)
+        self._autosave_enabled_action.setChecked(True)
+        self._settings_manager.set_auto_save_enabled(True)
+        self._settings_manager.set_auto_save_interval(5)
+        self._setup_autosave()
+
+        # Player preferences - reset to defaults
+        self._suppress_auto_play_next_persist = True
+        self._auto_play_next_enabled = False
+        self._sample_player.set_auto_play_next(False)
+        self._suppress_auto_play_next_persist = False
+
+        # Restore default window geometry and panel visibility
+        # Calculate default table height (same as initial setup)
+        try:
+            scrollbar_h = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        except RuntimeError:
+            scrollbar_h = 18
+        table_height = (
+            self._sample_table_view.horizontalHeader().height() + (9 * 30) + scrollbar_h + 12
+        )
+        # Calculate default waveform height (independent of navigator)
+        waveform_default = 200
+
+        # Restore splitter sizes to defaults
+        # Timeline splitter (toolbar) - minimum width for toolbar, reasonable size for editor
+        toolbar_min_width = self._toolbar.minimumWidth()
+        self._timeline_splitter.setSizes([toolbar_min_width, 800])
+
+        # Editor splitter - default sizes
+        if hasattr(self, "_editor_splitter"):
+            self._editor_splitter.setSizes([600, 100])
+
+        # Main splitter (editor/info table) - restore info table to hidden (default)
+        main_sizes = self._main_splitter.sizes()
+        if len(main_sizes) >= 2:
+            # Keep editor size, restore info table to hidden
+            editor_size = main_sizes[0] if main_sizes[0] > 0 else 600
+            self._main_splitter.setSizes([editor_size, 0])
+            # Still store initial size for when user expands it
+            self._info_table_initial_size = table_height
+
+        # Player splitter (player/waveform/spectrogram) - restore all to visible
+        player_sizes = self._player_spectro_splitter.sizes()
+        total_player_space = sum(player_sizes) if player_sizes else 600
+        # Default: player 120, waveform calculated, rest for spectrogram
+        if total_player_space < 120 + waveform_default + 100:
+            # Not enough space, adjust proportionally
+            total_player_space = 600
+        spectro_size = max(100, total_player_space - 120 - waveform_default)
+        self._set_player_splitter_sizes([120, waveform_default, spectro_size])
+        self._player_initial_size = 120
+        self._waveform_initial_size = waveform_default
+
+        # Make sure panels have correct visibility (info table hidden by default)
+        self._sample_table_view.setVisible(False)  # Hidden by default
+        self._sample_player.setVisible(True)
+        self._waveform_widget.setVisible(True)
+
+        # Restore full frequency range if audio is loaded
+        if (
+            self._current_audio_path
+            and self._pipeline_wrapper
+            and self._pipeline_wrapper.current_audio_info
+        ):
+            audio_info = self._pipeline_wrapper.current_audio_info
+            sample_rate = audio_info.get("sample_rate", 0)
+            if sample_rate > 0:
+                fmin = 0.0
+                fmax = sample_rate / 2.0
+                self._spectrogram_widget.set_frequency_range(fmin, fmax)
+                self._tiler.fmin = fmin
+                self._tiler.fmax = fmax
+
+        # Update menu actions to reflect actual visibility
+        if hasattr(self, "_show_info_action"):
+            sizes = self._main_splitter.sizes()
+            actual_visible = (sizes[1] if len(sizes) > 1 else 0) > 0
+            self._show_info_action.setChecked(actual_visible)
+        if hasattr(self, "_show_player_action"):
+            sizes = self._player_spectro_splitter.sizes()
+            actual_visible = (sizes[0] if sizes else 0) > 0
+            self._show_player_action.setChecked(actual_visible)
+        if hasattr(self, "_show_waveform_action"):
+            sizes = self._player_spectro_splitter.sizes()
+            actual_visible = (sizes[1] if len(sizes) > 2 else 0) > 0
+            self._show_waveform_action.setChecked(actual_visible)
+
+        QMessageBox.information(
+            self,
+            "Settings Reset",
+            "All settings have been reset to their default values.",
+        )
 
     def _on_autosave_enabled_changed(self, enabled: bool) -> None:
         """Handle auto-save enabled toggle.
@@ -3325,12 +3483,12 @@ class MainWindow(QMainWindow):
         if sizes[1] == 0:  # Info table is collapsed
             # Restore info table
             self._main_splitter.setSizes([sizes[0], self._info_table_initial_size])
-            self._hide_info_action.setChecked(False)
+            self._show_info_action.setChecked(True)
         else:
             # Collapse info table
             self._info_table_initial_size = sizes[1]  # Store current size
             self._main_splitter.setSizes([sizes[0], 0])
-            self._hide_info_action.setChecked(True)
+            self._show_info_action.setChecked(False)
 
     def _on_toggle_player(self) -> None:
         """Handle toggle player visibility."""
@@ -3345,13 +3503,13 @@ class MainWindow(QMainWindow):
             remaining = max(1, total - restored_player)
             spectro_size = max(1, remaining - waveform_size)
             self._set_player_splitter_sizes([restored_player, waveform_size, spectro_size])
-            self._hide_player_action.setChecked(False)
+            self._show_player_action.setChecked(True)
         else:
             # Collapse player
             self._player_initial_size = sizes[0]  # Store current size
             spectro_size = max(1, total - waveform_size)
             self._set_player_splitter_sizes([0, waveform_size, spectro_size])
-            self._hide_player_action.setChecked(True)
+            self._show_player_action.setChecked(False)
 
     def _on_toggle_waveform(self) -> None:
         """Handle toggle waveform visibility."""
@@ -3440,7 +3598,7 @@ class MainWindow(QMainWindow):
         """
         sizes = self._main_splitter.sizes()
         # Update menu action checked state based on visibility
-        self._hide_info_action.setChecked(sizes[1] == 0)
+        self._show_info_action.setChecked(sizes[1] > 0)
         if sizes[1] > 0:
             self._info_table_initial_size = sizes[1]  # Update stored size
 
@@ -3454,7 +3612,7 @@ class MainWindow(QMainWindow):
         sizes = self._player_spectro_splitter.sizes()
         total = sum(sizes)
         # Update menu action checked state based on visibility
-        self._hide_player_action.setChecked(sizes[0] == 0)
+        self._show_player_action.setChecked(sizes[0] > 0)
         if sizes[0] > 0:
             self._player_initial_size = sizes[0]  # Update stored size
         if len(sizes) >= 3:

@@ -43,6 +43,41 @@ class FFmpegError(Exception):
         self.context = context
         self.hints = list(hints or [])
 
+    def __reduce__(self) -> tuple[type, tuple[Sequence[str], str], dict[str, Any]]:
+        """Make FFmpegError picklable for multiprocessing."""
+        message = self.args[0] if self.args else ""
+        return (
+            self.__class__,
+            (self.command, message),
+            {
+                "command": list(self.command),  # Include command in state for safety
+                "message": message,  # Include message in state to restore self.args if needed
+                "stderr": self.stderr,
+                "stdout": self.stdout,
+                "exit_code": self.exit_code,
+                "context": self.context,
+                "hints": self.hints,
+            },
+        )
+
+    def __setstate__(self, state: dict[str, Any] | None) -> None:
+        """Restore FFmpegError state from pickled data."""
+        if state is None:
+            state = {}
+        # Restore all attributes, including command (safety in case __init__ wasn't called properly)
+        self.command = list(state.get("command", []))
+        self.stderr = state.get("stderr", "")
+        self.stdout = state.get("stdout", "")
+        self.exit_code = state.get("exit_code", 0)
+        self.context = state.get("context", "")
+        self.hints = state.get("hints", [])
+        # Ensure self.args is set for proper exception string representation
+        # The message should already be in self.args from __init__ during unpickling,
+        # but restore it from state if needed as a safety measure
+        if not self.args:
+            message = state.get("message", "")
+            super().__init__(message)
+
     @property
     def command_summary(self) -> str:
         """Return the command rendered as a single quoted string."""
@@ -466,6 +501,14 @@ def extract_sample(
             cmd += ["-f", format]
         if fmt_lower == "mp3":
             cmd += ["-codec:a", "libmp3lame"]
+        elif fmt_lower == "wav" and bit_depth:
+            # For WAV, select the appropriate PCM encoder based on bit depth
+            # pcm_s16le only supports s16, pcm_s24le supports s32 (24-bit), pcm_s32le supports s32
+            if bit_depth == "24":
+                cmd += ["-codec:a", "pcm_s24le"]
+            elif bit_depth == "32f":
+                cmd += ["-codec:a", "pcm_s32le"]
+            # For 16-bit, pcm_s16le is the default, no need to specify
         _apply_metadata(cmd)
         cmd += [str(output_path)]
 
@@ -555,6 +598,14 @@ def extract_sample(
         cmd += ["-f", format]
     if fmt_lower == "mp3":
         cmd += ["-codec:a", "libmp3lame"]
+    elif fmt_lower == "wav" and bit_depth:
+        # For WAV, select the appropriate PCM encoder based on bit depth
+        # pcm_s16le only supports s16, pcm_s24le supports s32 (24-bit), pcm_s32le supports s32
+        if bit_depth == "24":
+            cmd += ["-codec:a", "pcm_s24le"]
+        elif bit_depth == "32f":
+            cmd += ["-codec:a", "pcm_s32le"]
+        # For 16-bit, pcm_s16le is the default, no need to specify
     _apply_metadata(cmd)
     cmd += [str(output_path)]
     _run_media_tool(

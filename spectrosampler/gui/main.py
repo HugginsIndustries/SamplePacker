@@ -19,6 +19,15 @@ warnings.filterwarnings(
     module="webrtcvad",
 )
 
+# Suppress matplotlib ticker warnings about too many ticks
+# Despite setting NullLocator, matplotlib may still attempt tick generation internally
+# before checking the locator, causing harmless warnings during detection
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message=".*Locator attempting to generate.*ticks.*exceeds Locator.MAXTICKS.*",
+)
+
 
 def _print_help() -> None:
     print(

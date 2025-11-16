@@ -32,11 +32,11 @@ Autosave is enabled by default. If SpectroSampler detects an autosave newer than
 | **Waveform Preview (above spectrogram)** | Downsampled amplitude view linked to the editor view; drag the divider to resize or collapse it, or toggle via **View → Show Waveform**. |
 | **Spectrogram Canvas (center)** | Zoom/pan view, draw or adjust sample regions, right-click for context actions (play, toggle enable/disable, rename/delete selections, center/fill, disable others), drag handles to resize. |
 | **Navigator Overview (below spectrogram)** | Miniature spectrogram with a draggable viewport rectangle for quick jumps. |
-| **Sample Table (bottom)** | Per-sample enable checkbox, optional Name text field (feeds export filenames), start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). |
+| **Sample Table (bottom)** | Per-sample enable checkbox, optional Name text field (feeds export filenames), start/end/duration editing, detector info, quick actions (Center, Fill, Play, Delete). Hidden by default; toggle via View → Show Info Table. |
 
 `Ctrl`-click toggles additional samples and `Shift`-click extends the selection range; the spectrogram and table share the same selection so bulk edits, zooming, and export preparation stay synchronized.
 
-All splitters are draggable. Collapse the player or info table from the View menu if you prefer a taller spectrogram. SpectroSampler saves these positions with the project so the layout returns exactly as you left it.
+All splitters are draggable. The info table is hidden by default. Collapse or expand the player, info table, or waveform from the View menu (Show Info Table, Show Player, Show Waveform) to adjust the layout. SpectroSampler saves these positions with the project so the layout returns exactly as you left it.
 
 > Screenshot placeholder: `docs/images/main-window-overview.png`
 
@@ -44,8 +44,8 @@ All splitters are draggable. Collapse the player or info table from the View men
 
 - **File** – Project lifecycle (new/open/save), audio import, recent files, sample export.
 - **Edit** – Undo/redo, run detection, auto sample ordering, bulk delete/disable, project-wide **Enable All Samples** / **Disable All Samples**, overlap/duplicate removal and merging, Duration Edits (expand/contract, stretch from start/end).
-- **View** – Fit to Window, Zoom to Selection (`Ctrl+Shift+F`), toggle info table/player/waveform visibility, show disabled samples, refresh-rate limiter, grid settings, and theme selection (System/Dark/Light).
-- **Settings** – Autosave toggle/interval, clear recent projects/audio.
+- **View** – Fit to Window, Zoom to Selection (`Ctrl+Shift+F`), show/hide info table/player/waveform (Show Info Table, Show Player, Show Waveform), show disabled samples, refresh-rate limiter, grid settings, and theme selection (System/Dark/Light).
+- **Settings** – Autosave toggle/interval, reset all settings to defaults (preserves recent files).
 - **Help** – Diagnostics panel (FFmpeg status, audio devices, environment), verbose logging toggle, and the about dialog.
 
 Keyboard shortcuts mirror these actions; see [Appendix A](#appendix-a-keyboard-shortcuts).
@@ -105,7 +105,7 @@ Adjust the **Threshold** slider to refine sensitivity. Lower values detect more 
 ### 3.5 Audio Processing & Resources
 
 - **Denoise (off / afftdn / arnndn)** – Light clean-up before detection.
-- **High-pass / Low-pass** – Restrict processing to a frequency band; the spectrogram updates live.
+- **High-pass / Low-pass** – Restrict processing to a frequency band. Note: By default, the spectrogram shows the full frequency range of the loaded audio file (up to the Nyquist frequency, which is half the sample rate). These settings only limit the frequency range when detection is run.
 - **Noise reduction** – Apply additional attenuation in dB.
 - **CPU workers** – Tweak how many cores detection uses (default is the system count minus one).
 
@@ -155,7 +155,7 @@ Right-click any segment (or multi-selection) in the spectrogram to open the cont
 ### 4.4 Waveform Preview
 
 - Shares the same view range as the spectrogram and highlights selected segments in lockstep.
-- Drag the horizontal divider between the player, waveform, and spectrogram to change heights (minimum 60 px).
+- Drag the horizontal divider between the player, waveform, and spectrogram to change heights. Default height is 200px.
 - Collapse or restore it from **View → Show Waveform**; the preference persists in user settings and project files.
 - Playback indicators mirror the spectrogram so you can align amplitude and spectral cues quickly.
 
@@ -224,9 +224,10 @@ Only columns that remain enabled (checked) in the info table are exported. Filen
 - **Autosave** – Enabled by default; configure via Settings → Auto-save → Auto-save Interval.
 - **Manual Save** – `Ctrl+S` writes the current `.ssproj`. `Ctrl+Shift+S` prompts for a new filename.
 - **Unsaved Changes Prompt** – Closing the window or quitting the app with modifications opens a Save/Discard/Cancel dialog.
-- **Recent Lists** – Clear stale entries from Settings → Clear Recent Projects/Audio.
+- **Recent Lists** – Clear stale entries from File → Recent Projects → Clear Recent Projects or File → Recent Audio Files → Clear Recent Audio Files.
+- **Reset Settings** – Use Settings → Reset All To Default to clear all saved preferences and restore defaults. This preserves recent projects and audio files.
 - **Detection & Export Defaults** – Thresholds, timing guards, overlap behavior, and export settings (formats, audio parameters, padding, normalization, bandpass, metadata, filename template, destination) persist per-user and reload with each project unless you override them inside the project file.
-- **Layout Preservation** – Splitter positions for the settings/editor, player/waveform/spectrogram stack, navigator, and info table are stored in the project file; collapsing a panel keeps it collapsed on reopen.
+- **Layout Preservation** – Splitter positions for the toolbar/editor, player/waveform/spectrogram stack, navigator, and info table are stored in the project file; collapsing a panel keeps it collapsed on reopen.
 
 Project files are plain JSON and include audio paths, detection/export settings, grid config, and window layout. If the referenced audio is missing, SpectroSampler prompts to relink it when opening the project.
 

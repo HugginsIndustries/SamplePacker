@@ -533,11 +533,11 @@ def process_file(
         elif isinstance(settings.threshold, str):
             try:
                 thr_pct = float(settings.threshold)
-            except ValueError as exc:
+            except ValueError:
                 logging.warning(
-                    "Invalid threshold value '%s': %s", settings.threshold, exc, exc_info=exc
+                    "Invalid threshold value '%s', using default 50.0", settings.threshold
                 )
-                thr_pct = None
+                thr_pct = 50.0
         tf_kwargs: dict[str, Any] = {"sample_rate": sr}
         if thr_pct is not None and 0.0 < thr_pct < 100.0:
             tf_kwargs["threshold_percentile"] = thr_pct

@@ -33,6 +33,17 @@ class Timer:
             logging.debug(f"{self.label} took {self.elapsed:.3f}s")
 
 
+class MatplotlibTickerFilter(logging.Filter):
+    """Filter to suppress matplotlib ticker warnings about too many ticks."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter out matplotlib.ticker warnings about MAXTICKS."""
+        if record.name == "matplotlib.ticker" and record.levelno == logging.WARNING:
+            if "Locator attempting to generate" in record.getMessage():
+                return False
+        return True
+
+
 def setup_logging(verbose: bool = False) -> None:
     """Configure logging for the application.
 
@@ -48,6 +59,13 @@ def setup_logging(verbose: bool = False) -> None:
     matplotlib_level = logging.INFO if verbose else logging.WARNING
     logging.getLogger("matplotlib").setLevel(matplotlib_level)
     logging.getLogger("matplotlib.font_manager").setLevel(matplotlib_level)
+    # Suppress matplotlib.ticker warnings about too many ticks
+    # Despite setting NullLocator, matplotlib may still attempt tick generation internally
+    # Apply filter to both the specific logger and root logger to catch all cases
+    ticker_logger = logging.getLogger("matplotlib.ticker")
+    ticker_logger.addFilter(MatplotlibTickerFilter())
+    root_logger = logging.getLogger()
+    root_logger.addFilter(MatplotlibTickerFilter())
 
 
 def compute_file_hash(file_path: Path, chunk_size: int = 8192) -> str:

@@ -87,17 +87,18 @@ spectrosampler-gui --version          Show version and exit
 ### Workspace Layout
 - **Left panel** – Toolbar with mode selection buttons (Select, Edit, Create).
 - **Top center** – Sample player: scrubbable transport, loop toggle, navigation controls, and live metadata.
-- **Waveform preview** – Time-aligned amplitude view sitting above the spectrogram with draggable splitter to resize or collapse (View → Show Waveform).
-- **Spectrogram canvas** – Zoom/pan, drag handles to edit sample bounds, create regions by dragging. Context menu adds disable/enable actions.
+- **Waveform preview** – Time-aligned amplitude view sitting above the spectrogram with draggable splitter to resize or collapse (View → Show Waveform). Default height is 200px.
+- **Spectrogram canvas** – Zoom/pan, drag handles to edit sample bounds, create regions by dragging. Context menu adds disable/enable actions. By default, shows the full frequency range of the loaded audio file (up to the Nyquist frequency).
 - **Navigator overview** – Mini spectrogram for fast navigation, drag edges to resize view.
-- **Info table** – Grid of every detected sample with enable toggle, optional Name field (feeds export filenames), center/fill shortcuts, detector name, start/end/duration editing, and per-row delete.
+- **Info table** – Grid of every detected sample with enable toggle, optional Name field (feeds export filenames), center/fill shortcuts, detector name, start/end/duration editing, and per-row delete. Hidden by default; toggle via View → Show Info Table.
 
 ### Persistence & Safety
 - Autosave is on by default (Settings → Auto-save). Interval is configurable; autosaves live in the system temp directory.
 - Closing with unsaved edits prompts to save/discard.
 - Detection, export, and overlap-resolution defaults persist between sessions and reload when you reopen a project or restart the app, so your thresholds and conflict handling follow you automatically.
-- Splitter layouts (settings vs. editor, player/waveform/spectrogram stack, info table) restore exactly as saved, so collapsed panels stay collapsed when a project reopens.
-- Recent projects/audio lists are available in the File menu and welcome screen; you can clear them via Settings → Clear Recent Projects/Audio.
+- Splitter layouts (toolbar/editor, player/waveform/spectrogram stack, info table) restore exactly as saved, so collapsed panels stay collapsed when a project reopens.
+- Recent projects/audio lists are available in the File menu and welcome screen; you can clear them via File → Recent Projects → Clear Recent Projects or File → Recent Audio Files → Clear Recent Audio Files.
+- Use Settings → Reset All To Default to clear all saved preferences and restore defaults (recent files are preserved).
 
 ### Running Detection
 1. Load an audio file (`Ctrl+Shift+O` or drag/drop).

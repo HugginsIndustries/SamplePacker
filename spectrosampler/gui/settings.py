@@ -657,7 +657,7 @@ class SettingsManager:
             else:
                 geometry["timelineSplitterSizes"] = timeline_splitter
 
-        geometry["infoTableVisible"] = self._settings.value("infoTableVisible", True, type=bool)
+        geometry["infoTableVisible"] = self._settings.value("infoTableVisible", False, type=bool)
         geometry["playerVisible"] = self._settings.value("playerVisible", True, type=bool)
         geometry["waveformVisible"] = self._settings.value("waveformVisible", True, type=bool)
         return geometry
@@ -686,4 +686,41 @@ class SettingsManager:
             self._settings.setValue("playerVisible", geometry["playerVisible"])
         if "waveformVisible" in geometry:
             self._settings.setValue("waveformVisible", geometry["waveformVisible"])
+        self._settings.sync()
+
+    def clear_all_settings(self) -> None:
+        """Clear all persisted settings and restore defaults.
+
+        This removes all stored preferences including:
+        - Detection settings
+        - Export settings
+        - Export overrides
+        - Auto-save settings
+        - Theme preference
+        - Window geometry
+        - Overlap dialog settings
+        - Player preferences
+        - All other application preferences
+
+        Note: Recent projects and audio files are preserved.
+        """
+        # Preserve recent files before clearing
+        recent_projects = self._settings.value("recentProjects", [])
+        recent_projects_timestamps = self._settings.value("recentProjectsTimestamps", [])
+        recent_audio_files = self._settings.value("recentAudioFiles", [])
+        recent_audio_files_timestamps = self._settings.value("recentAudioFilesTimestamps", [])
+
+        # Clear all settings
+        self._settings.clear()
+
+        # Restore recent files
+        if recent_projects:
+            self._settings.setValue("recentProjects", recent_projects)
+        if recent_projects_timestamps:
+            self._settings.setValue("recentProjectsTimestamps", recent_projects_timestamps)
+        if recent_audio_files:
+            self._settings.setValue("recentAudioFiles", recent_audio_files)
+        if recent_audio_files_timestamps:
+            self._settings.setValue("recentAudioFilesTimestamps", recent_audio_files_timestamps)
+
         self._settings.sync()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -79,7 +80,7 @@ class ProcessingSettings:
         """Initialize settings from keyword arguments."""
         # Mode and thresholds
         self.mode: str = kwargs.get("mode", "auto")
-        self.threshold: Any = kwargs.get("threshold", "auto")
+        self.threshold: Any = kwargs.get("threshold", 50.0)
 
         # Timing (milliseconds)
         # Detection padding (used during detection/deduplication)
@@ -130,7 +131,7 @@ class ProcessingSettings:
             kwargs.get("post_pad_ms", kwargs.get("detection_post_pad_ms", 0.0))
         )
         self.merge_gap_ms: float = float(kwargs.get("merge_gap_ms", 0.0))
-        self.min_dur_ms: float = float(kwargs.get("min_dur_ms", 100.0))
+        self.min_dur_ms: float = float(kwargs.get("min_dur_ms", 200.0))
         self.max_dur_ms: float = float(kwargs.get("max_dur_ms", 60000.0))
         self.min_gap_ms: float = float(kwargs.get("min_gap_ms", 1000.0))
         # Disable chain-merge after padding by default
@@ -192,7 +193,9 @@ class ProcessingSettings:
         self.overlap_default_behavior: str = behavior
 
         # Internal/default configuration
-        self.max_workers: int = kwargs.get("max_workers", 0)
+        # Default to available CPU threads minus 1 (leave one for main thread)
+        default_workers = max(1, (os.cpu_count() or 4) - 1)
+        self.max_workers: int = kwargs.get("max_workers", default_workers)
 
         # Per-mode defaults (only if value equals non-transient default)
         if self.mode == "transient":
@@ -518,4 +521,8 @@ class ProcessingSettings:
             return cls()
         if not isinstance(data, dict):
             raise TypeError("ProcessingSettings.from_dict expects a dictionary.")
+        # Normalize invalid threshold values
+        if "threshold" in data and isinstance(data["threshold"], str):
+            if data["threshold"].strip().lower() == "auto":
+                data["threshold"] = 50.0
         return cls(**data)
